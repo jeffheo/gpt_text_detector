@@ -1,55 +1,59 @@
 import copy
 import time
+import torch
+import torch.nn as nn
+import math
+import stat_model 
+import baseline_model 
 
-criterion = nn.CrossEntropyLoss()
-lr = 5.0  # learning rate
-optimizer = torch.optim.SGD(model.parameters(), lr=lr)
-scheduler = torch.optim.lr_scheduler.StepLR(optimizer, 1.0, gamma=0.95)
+def train_model(model, dataset, config):
+    # Extract configuration parameters
+    loss_fn = config["loss_fn"]
+    optimizer = config["optimizer"]
+    lr = config["learning_rate"]
+    epochs = config["epochs"]
+    batch_size = config["batch_size"]
+    scheduler = config.get("scheduler", None)
 
-def train(model: nn.Module) -> None:
-    model.train()  # turn on train mode
-    total_loss = 0.
-    log_interval = 200
-    start_time = time.time()
-    src_mask = generate_square_subsequent_mask(bptt).to(device)
+    # Create data loader
+    data_loader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=True)
 
-    num_batches = len(train_data) // bptt
-    for batch, i in enumerate(range(0, train_data.size(0) - 1, bptt)):
-        data, targets = get_batch(train_data, i)
-        seq_len = data.size(0)
-        if seq_len != bptt:  # only on last batch
-            src_mask = src_mask[:seq_len, :seq_len]
-        output = model(data, src_mask)
-        loss = criterion(output.view(-1, ntokens), targets)
+    # Set up the optimizer and scheduler
+    optimizer = optimizer(model.parameters(), lr=lr)
+    if scheduler is not None:
+        scheduler = scheduler(optimizer)
 
-        optimizer.zero_grad()
-        loss.backward()
-        torch.nn.utils.clip_grad_norm_(model.parameters(), 0.5)
-        optimizer.step()
+    # Train the model
+    for epoch in range(epochs):
+        model.train()
+        total_loss = 0.0
+        for i, (inputs, attention_masks, labels, stat_vec) in enumerate(data_loader):
+            # Zero out gradients
+            optimizer.zero_grad()
 
-        total_loss += loss.item()
-        if batch % log_interval == 0 and batch > 0:
-            lr = scheduler.get_last_lr()[0]
-            ms_per_batch = (time.time() - start_time) * 1000 / log_interval
-            cur_loss = total_loss / log_interval
-            ppl = math.exp(cur_loss)
-            print(f'| epoch {epoch:3d} | {batch:5d}/{num_batches:5d} batches | '
-                  f'lr {lr:02.2f} | ms/batch {ms_per_batch:5.2f} | '
-                  f'loss {cur_loss:5.2f} | ppl {ppl:8.2f}')
-            total_loss = 0
-            start_time = time.time()
+            # Convert inputs to tensors
+            inputs = torch.tensor(inputs)
+            attention_masks = torch.tensor(attention_masks)
+            labels = torch.tensor(labels)
+            stat_vec = torch.tensor(stat_vec)
 
-def evaluate(model: nn.Module, eval_data: Tensor) -> float:
-    model.eval()  # turn on evaluation mode
-    total_loss = 0.
-    src_mask = generate_square_subsequent_mask(bptt).to(device)
-    with torch.no_grad():
-        for i in range(0, eval_data.size(0) - 1, bptt):
-            data, targets = get_batch(eval_data, i)
-            seq_len = data.size(0)
-            if seq_len != bptt:
-                src_mask = src_mask[:seq_len, :seq_len]
-            output = model(data, src_mask)
-            output_flat = output.view(-1, ntokens)
-            total_loss += seq_len * criterion(output_flat, targets).item()
-    return total_loss / (len(eval_data) - 1)
+            # Compute outputs and loss
+            outputs = model(inputs, attention_masks, stat_vec)
+            loss = loss_fn(outputs, labels)
+
+            # Backpropagate and update weights
+            loss.backward()
+            optimizer.step()
+
+            # Update total loss
+            total_loss += loss.item()
+
+        # Output average loss for epoch
+        avg_loss = total_loss / len(data_loader)
+        print(f"Epoch {epoch+1}/{epochs}, Avg. Loss: {avg_loss:.4f}")
+
+        # Step the scheduler
+        if scheduler is not None:
+            scheduler.step()
+
+    print("Training complete!")

@@ -1,22 +1,30 @@
 import torch
 from transformers import AutoTokenizer, RobertaForSequenceClassification
 
-tokenizer = AutoTokenizer.from_pretrained("cardiffnlp/twitter-roberta-base-emotion")
-model = RobertaForSequenceClassification.from_pretrained("cardiffnlp/twitter-roberta-base-emotion")
+import torch
+import torch.nn as nn
+from transformers import RobertaModel
 
-inputs = tokenizer("Hello, my dog is cute", return_tensors="pt")
+# Define the model architecture
+class BaselineRobertaModel(nn.Module):
+    def __init__(self, roberta_model):
+        super(BaselineRobertaModel, self).__init__()
+        self.roberta = roberta_model
+        self.dropout = nn.Dropout(0.1)
+        self.relu = nn.ReLU()
+        self.sigmoid = nn.Sigmoid()
+        self.linear1 = nn.Linear(768, 256)
+        self.linear2 = nn.Linear(256, 64)
+        self.linear3 = nn.Linear(64, 1) # binary classification
 
-with torch.no_grad():
-    logits = model(**inputs).logits
-
-predicted_class_id = logits.argmax().item()
-model.config.id2label[predicted_class_id]
-'optimism'
-
-# To train a model on `num_labels` classes, you can pass `num_labels=num_labels` to `.from_pretrained(...)`
-num_labels = len(model.config.id2label)
-model = RobertaForSequenceClassification.from_pretrained("cardiffnlp/twitter-roberta-base-emotion", num_labels=num_labels)
-
-labels = torch.tensor([1])
-loss = model(**inputs, labels=labels).loss
-round(loss.item(), 2)
+    def forward(self, input_ids, attention_mask):
+        outputs = self.roberta(input_ids=input_ids, attention_mask=attention_mask)
+        pooled_output = outputs.pooler_output #batch_size * hidden_size
+        pooled_output = self.dropout(pooled_output)
+        linear1_output = self.linear1(pooled_output)
+        linear1_output = self.relu(linear1_output)
+        linear2_output = self.linear2(linear1_output)
+        linear2_output = self.relu(linear2_output)
+        logits = self.linear3(linear2_output)
+        logits = self.sigmoid(logits)
+        return logits
