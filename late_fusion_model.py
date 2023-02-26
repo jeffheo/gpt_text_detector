@@ -17,8 +17,8 @@ class StatRobertaModel(nn.Module):
         self.linear2 = nn.Linear(256, 64)
         self.linear3 = nn.Linear(64, 1) # binary classification
 
-    def forward(self, input_ids, attention_mask, stat_vec):
-        outputs = self.roberta(input_ids=input_ids, attention_mask=attention_mask)
+    def forward(self, input_embeddings, attention_mask, stat_vec):
+        outputs = self.roberta(input_embeds=input_embeddings, attention_mask=attention_mask)
         pooled_output = outputs.pooler_output #batch_size * hidden_size
         pooled_output = self.dropout(pooled_output)
         concat_output = torch.cat((pooled_output, stat_vec), 1)

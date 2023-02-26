@@ -4,11 +4,12 @@ import math
 from torch.utils.data import Dataset, DataLoader
 
 class CustomDataset(Dataset):
-    def __init__(self, corpus_file_path, tokenizer):
+    def __init__(self, corpus_file_path, tokenizer, embedder):
         self.tokenizer = tokenizer
         self.sentences = []
         self.labels = []
-        self.entropies = []
+        self.stat_embeddings = []
+        self.embedder = embedder
         with open(corpus_file_path, "r") as f:
             for line in f:
                 parts = line.strip().split("\t")
@@ -18,34 +19,25 @@ class CustomDataset(Dataset):
                 label = int(parts[1])
                 self.sentences.append(sentence)
                 self.labels.append(label)
-                entropy = self.compute_entropy(sentence)
-                self.entropies.append(entropy)
+                stat_embedding = self.compute_stat_embedding(sentence)
+                self.stat_embeddings.append(stat_embedding)
         self.max_seq_length = max([len(self.tokenizer.encode(sentence)) for sentence in self.sentences])
-
-    def compute_entropy(self, sentence):
-        char_count = {}
-        for char in sentence:
-            if char not in char_count:
-                char_count[char] = 1
-            else:
-                char_count[char] += 1
-        entropy = 0.0
-        for char in char_count:
-            prob = char_count[char] / len(sentence)
-            entropy -= prob * math.log2(prob)
-        return entropy
 
     def __len__(self):
         return len(self.sentences)
 
     def __getitem__(self, idx):
         sentence = self.sentences[idx]
-        label = self.labels[idx]
-        entropy = self.entropies[idx]
+        label = torch.tensor(self.labels[idx])
+        stat_embedding = torch.tensor(self.stat_embeddings[idx])
+        tokens = self.tokenizer(sentence, padding=True, truncation=True, return_tensors='pt')
+    # Generate embeddings for token IDs
+        input_embeddings = torch.tensor(self.embedder(tokens['input_ids']))
         input_ids = self.tokenizer.encode(sentence, padding='max_length', max_length=self.max_seq_length)
-        attention_mask = [int(token_id > 0) for token_id in input_ids]
-
-        return input_ids, attention_mask, label, entropy
+        attention_mask = torch.tensor([int(token_id > 0) for token_id in input_ids])
+        stat_embedding = stat_embedding.unsqueeze(0).expand(input_embeddings.size(dim = 0), -1)  # (sequence_length, embedding_size)
+        input_embeddings = torch.cat([input_embeddings, stat_embedding], dim=1)
+        return input_embeddings, attention_mask, label
 
 # Initialize the tokenizer and model
 tokenizer = RobertaTokenizer.from_pretrained('roberta-base')

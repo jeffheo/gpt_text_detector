@@ -3,8 +3,8 @@ import time
 import torch
 import torch.nn as nn
 import math
-import stat_model 
-import baseline_model 
+import late.late_fusion_model as late_fusion_model 
+import baseline.baseline_model as baseline_model 
 
 def train_model(model, dataset, config):
     # Extract configuration parameters
@@ -29,13 +29,7 @@ def train_model(model, dataset, config):
         total_loss = 0.0
         for i, (inputs, attention_masks, labels, stat_vec) in enumerate(data_loader):
             # Zero out gradients
-            optimizer.zero_grad()
-
-            # Convert inputs to tensors
-            inputs = torch.tensor(inputs)
-            attention_masks = torch.tensor(attention_masks)
-            labels = torch.tensor(labels)
-            stat_vec = torch.tensor(stat_vec)
+            optimizer.zero_grad()    
 
             # Compute outputs and loss
             outputs = model(inputs, attention_masks, stat_vec)

@@ -6,9 +6,9 @@ import torch.nn as nn
 from transformers import RobertaModel
 
 # Define the model architecture
-class BaselineRobertaModel(nn.Module):
+class StatRobertaModel(nn.Module):
     def __init__(self, roberta_model):
-        super(BaselineRobertaModel, self).__init__()
+        super(StatRobertaModel, self).__init__()
         self.roberta = roberta_model
         self.dropout = nn.Dropout(0.1)
         self.relu = nn.ReLU()
