@@ -10,9 +10,11 @@ import numpy as np
 from typing import List
 
 import torch
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset, DataLoader
 from tqdm import tqdm
 from transformers import PreTrainedTokenizer
+
+from stat_extractor import StatFeatureExtractor
 
 #
 # def load_texts(data_file, expected_size=None):
@@ -38,11 +40,12 @@ class EncodedDataset(Dataset):
     EncodedDataset from https://github.com/openai/gpt-2-output-dataset/blob/2c102400c7e4e698acd3f0e51d3b6cf1c637c0fe/detector/dataset.py
     """
     def __init__(self, real_texts: List[str], fake_texts: List[str], tokenizer: PreTrainedTokenizer,
-                 max_sequence_length: int = None, min_sequence_length: int = None, epoch_size: int = None,
-                 token_dropout: float = None, seed: int = None):
+                 stat_extractor: StatFeatureExtractor, max_sequence_length: int = None, min_sequence_length: int = None,
+                 epoch_size: int = None, token_dropout: float = None, seed: int = None, **kwargs):
         self.real_texts = real_texts
         self.fake_texts = fake_texts
         self.tokenizer = tokenizer
+        self.stat_extractor = stat_extractor
         self.max_sequence_length = max_sequence_length
         self.min_sequence_length = min_sequence_length
         self.epoch_size = epoch_size
@@ -66,6 +69,10 @@ class EncodedDataset(Dataset):
                 label = 0
 
         tokens = self.tokenizer.encode(text)
+
+        # TODO: Encode Stat Vec
+        stat_vec = self.stat_extractor.encode(text)
+        print(f'Stat Vector: {stat_vec}')
 
         if self.max_sequence_length is None:
             tokens = tokens[:self.tokenizer.max_len - 2]
@@ -91,4 +98,11 @@ class EncodedDataset(Dataset):
         tokens = torch.tensor([self.tokenizer.bos_token_id] + tokens + [self.tokenizer.eos_token_id] + padding)
         mask = torch.ones(tokens.shape[0])
         mask[-len(padding):] = 0
-        return tokens, mask, label
+        return tokens, mask, label, stat_vec
+
+
+# TODO: Implement DataLoader, using dataset processed by ./dataset.py
+def load_datasets(data_dir, real_dataset, fake_dataset, batch_size,
+                  max_sequence_length, random_sequence_length,
+                  epoch_size=None, token_dropout=None, seed=None, **kwargs) -> DataLoader:
+    raise NotImplementedError

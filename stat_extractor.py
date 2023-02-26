@@ -1,6 +1,23 @@
 import string
 import numpy as np
 
+from typing import List, Dict
+
+
+class StatFeatureExtractor:
+    def __init__(self, args: Dict[str, bool]):
+        self.features = [locals()[k] for k in args if args[k]]
+
+    def stat_vec_size(self):
+        # TODO: Calculate Stat Vector size based on features used
+        return len(self.features) * 10
+
+    def encode(self, text: str) -> List[int]:
+        vec = []
+        for phi in self.features:
+            vec += phi(text)
+        return vec
+
 
 def zipf():
     """Calculate distribution and information loss relative to Zipf Distribution
