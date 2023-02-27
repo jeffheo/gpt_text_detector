@@ -17,7 +17,7 @@ class RobertaWrapper(nn.Module):
     Applies Linear Transformation and Non-linearity to Stat Vector to compute "Stat Embedding"
     forward() is same as RobertaForSequenceClassification
     """
-    def __init__(self, roberta_seq_classifier, stat_vec_size, early_fusion):
+    def __init__(self, roberta_seq_classifier, stat_vec_size, baseline, early_fusion):
         super(RobertaWrapper, self).__init__()
         # W: R^{stat_vec_size} --> R^{hidden_size}
         self.linear = nn.Linear(stat_vec_size, roberta_seq_classifier.config.hidden_size)
@@ -25,6 +25,7 @@ class RobertaWrapper(nn.Module):
         self.roberta_seq_classifier = roberta_seq_classifier #the whole thing
         self.base = roberta_seq_classifier.roberta
         self.classifier_head = roberta_seq_classifier.classifier
+        self.is_baseline = baseline
         self.early_fusion = early_fusion #early or late fusion boolean flag
 
     def stat_embeddings(self, stat):
@@ -53,7 +54,7 @@ class RobertaWrapper(nn.Module):
         return_dict: Optional[bool] = None,
         stat_embeds: Optional[torch.FloatTensor] = None
     ) -> Union[Tuple[torch.Tensor], SequenceClassifierOutput]:
-        if self.early_fusion:
+        if self.early_fusion or self.is_baseline:
             return self.roberta_seq_classifier(input_ids, attention_mask, token_type_ids, position_ids, head_mask,
                                            inputs_embeds, labels, output_attentions, output_hidden_states, return_dict)
         else:
@@ -81,13 +82,13 @@ def train(model: nn.Module, optimizer, loader, freeze, device):
             batch_size = input_ids.shape[0]
 
             input_embeds = model.word_embeddings(input_ids)
-
+            stat_embeds = None
             # TODO: Convert Stat Vector to input_embeds size
-            stat_embeds = model.stat_embedding(stats)
-
-            assert input_embeds.size() == stat_embeds.size()
-            if model.early_fusion:
-                input_embeds += stat_embeds
+            if not model.is_baseline:
+                stat_embeds = model.stat_embedding(stats)
+                assert input_embeds.size() == stat_embeds.size()
+                if model.early_fusion:
+                    input_embeds += stat_embeds
 
             optimizer.zero_grad()
             loss, logits = model(input_embeds=input_embeds, attention_mask=masks, labels=labels, stat_embeds = stat_embeds)
@@ -123,6 +124,7 @@ if __name__ == '__main__':
     parser.add_argument('--fake-dataset', type=str, default='xl-1542M-k40')
     parser.add_argument('--token-dropout', type=float, default=None)
     parser.add_argument('--early_fusion', action ="store_true")
+    parser.add_argument('--baseline', action ="store_true")
 
     parser.add_argument('--learning-rate', type=float, default=2e-5)
     parser.add_argument('--weight-decay', type=float, default=0)
@@ -151,7 +153,7 @@ if __name__ == '__main__':
     name = f'roberta-{"large" if args.large else "base"}-openai-detector'
 
     _roberta = transformers.RobertaForSequenceClassification.from_pretrained(name)
-    _model = RobertaWrapper(_roberta, stat_size, args.early_fusion)
+    _model = RobertaWrapper(_roberta, stat_size, args.baseline, args.early_fusion)
     _optimizer = Adam(_model.parameters(), lr=args.learning_rate, weight_decay=args.weight_decay)
     _loader = load_datasets(**vars(args))
 
