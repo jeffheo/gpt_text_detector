@@ -17,12 +17,15 @@ class RobertaWrapper(nn.Module):
     Applies Linear Transformation and Non-linearity to Stat Vector to compute "Stat Embedding"
     forward() is same as RobertaForSequenceClassification
     """
-    def __init__(self, roberta_seq_classifier, stat_vec_size):
+    def __init__(self, roberta_seq_classifier, stat_vec_size, early_fusion):
         super(RobertaWrapper, self).__init__()
         # W: R^{stat_vec_size} --> R^{hidden_size}
         self.linear = nn.Linear(stat_vec_size, roberta_seq_classifier.config.hidden_size)
         self.relu = nn.ReLU()
-        self.roberta_seq_classifier = roberta_seq_classifier
+        self.roberta_seq_classifier = roberta_seq_classifier #the whole thing
+        self.base = roberta_seq_classifier.roberta
+        self.classifier_head = roberta_seq_classifier.classifier
+        self.early_fusion = early_fusion #early or late fusion boolean flag
 
     def stat_embeddings(self, stat):
         linear_output = self.linear(stat)
@@ -48,9 +51,16 @@ class RobertaWrapper(nn.Module):
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
+        stat_embeds: Optional[torch.FloatTensor] = None
     ) -> Union[Tuple[torch.Tensor], SequenceClassifierOutput]:
-        return self.roberta_seq_classifier(input_ids, attention_mask, token_type_ids, position_ids, head_mask,
+        if self.early_fusion:
+            return self.roberta_seq_classifier(input_ids, attention_mask, token_type_ids, position_ids, head_mask,
                                            inputs_embeds, labels, output_attentions, output_hidden_states, return_dict)
+        else:
+            output = self.base(input_ids, attention_mask, token_type_ids, position_ids, head_mask,
+                                           inputs_embeds, labels, output_attentions, output_hidden_states, return_dict)
+            output += stat_embeds
+            return self.classifier_head(output)
 
 
 def train(model: nn.Module, optimizer, loader, freeze, device):
@@ -76,11 +86,11 @@ def train(model: nn.Module, optimizer, loader, freeze, device):
             stat_embeds = model.stat_embedding(stats)
 
             assert input_embeds.size() == stat_embeds.size()
-
-            input_embeds += stat_embeds
+            if model.early_fusion:
+                input_embeds += stat_embeds
 
             optimizer.zero_grad()
-            loss, logits = model(input_embeds=input_embeds, attention_mask=masks, labels=labels)
+            loss, logits = model(input_embeds=input_embeds, attention_mask=masks, labels=labels, stat_embeds = stat_embeds)
             loss.backward()
             optimizer.step()
 
@@ -112,6 +122,7 @@ if __name__ == '__main__':
     parser.add_argument('--real-dataset', type=str, default='webtext')
     parser.add_argument('--fake-dataset', type=str, default='xl-1542M-k40')
     parser.add_argument('--token-dropout', type=float, default=None)
+    parser.add_argument('--early_fusion', action ="store_true")
 
     parser.add_argument('--learning-rate', type=float, default=2e-5)
     parser.add_argument('--weight-decay', type=float, default=0)
@@ -119,7 +130,7 @@ if __name__ == '__main__':
 
     parser.add_argument('--all', '-a', action="store_true")
     parser.add_argument('--zipf', '-z', action="store_true")
-    parser.add_argument('--gini', '-g', action="store_true")
+    parser.add_argument('--heaps', '-e', action="store_true")
     parser.add_argument('--punctuation', '-p', action="store_true")
     parser.add_argument('--coreference', '-c', action="store_true")
     parser.add_argument('--creativity', '-r', action="store_true")
@@ -128,19 +139,19 @@ if __name__ == '__main__':
 
     d = {
         'zipf': args.all or args.zipf,
+        'heaps': args.all or args.heaps,
         'punctuation': args.all or args.punctuation,
-        'gini': args.all or args.gini,
-        'creativity': args.all or args.creativity,  # TODO
-        'coreference': args.all or args.coreference,  # TODO
+        'coreference': args.all or args.coreference,
+        'creativity': args.all or args.creativity,
     }
 
     args.stat_extractor = StatFeatureExtractor(d)
-    stat_size = args.stat_extractor.stat_vec_size
+    stat_size = args.stat_extractor.stat_vec_size()
 
     name = f'roberta-{"large" if args.large else "base"}-openai-detector'
 
     _roberta = transformers.RobertaForSequenceClassification.from_pretrained(name)
-    _model = RobertaWrapper(_roberta, stat_size)
+    _model = RobertaWrapper(_roberta, stat_size, args.early_fusion)
     _optimizer = Adam(_model.parameters(), lr=args.learning_rate, weight_decay=args.weight_decay)
     _loader = load_datasets(**vars(args))
 
