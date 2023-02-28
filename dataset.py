@@ -116,19 +116,26 @@ def preload_data(data_path, output_dir, train_pct, val_pct):
     """
     rows = load_csv(data_path)[1:] # Drop the title row
 
+    real = []
+    fake = []
+    for row in rows:
+        # Have rows only contain generated and non
+        real.append([row[3]]) # wiki intro
+        fake.append([row[3]]) # generated intro
+
     num_examples = len(rows)
     train_idx = math.floor(num_examples * train_pct / 100)
     val_idx = train_idx + math.floor(num_examples * val_pct / 100)
 
     ## Need to figure out what format we want the data to look like
 
-    write_csv(f"{output_dir}/real.train.csv", rows[:train_idx])
-    write_csv(f"{output_dir}/real.val.csv", rows[train_idx:val_idx])
-    write_csv(f"{output_dir}/real.test.csv", rows[val_idx:])
+    write_csv(f"{output_dir}/real.train.csv", real[:train_idx])
+    write_csv(f"{output_dir}/real.val.csv", real[train_idx:val_idx])
+    write_csv(f"{output_dir}/real.test.csv", real[val_idx:])
 
-    write_csv(f"{output_dir}/fake.train.csv", rows[:train_idx])
-    write_csv(f"{output_dir}/fake.val.csv", rows[train_idx:val_idx])
-    write_csv(f"{output_dir}/fake.test.csv", rows[val_idx:])
+    write_csv(f"{output_dir}/fake.train.csv", fake[:train_idx])
+    write_csv(f"{output_dir}/fake.val.csv", fake[train_idx:val_idx])
+    write_csv(f"{output_dir}/fake.test.csv", fake[val_idx:])
 
 
 # TODO: Implement DataLoader, using dataset processed by ./dataset.py
