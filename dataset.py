@@ -5,35 +5,44 @@ Reference:
     - https://github.com/openai/gpt-2-output-dataset/blob/2c102400c7e4e698acd3f0e51d3b6cf1c637c0fe/detector/dataset.py#L32
     - https://github.com/eric-mitchell/detect-gpt/blob/main/custom_datasets.py
 """
-import json
 import numpy as np
 from typing import List
 
 import torch
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset, DataLoader, DistributedSampler, RandomSampler
 from tqdm import tqdm
 from transformers import PreTrainedTokenizer
 
 from stat_extractor import StatFeatureExtractor
+import torch.distributed as dist
+from csv import reader
+import csv
+import math
 
-#
-# def load_texts(data_file, expected_size=None):
-#     texts = []
-#
-#     for line in tqdm(open(data_file), total=expected_size, desc=f'Loading {data_file}'):
-#         texts.append(json.loads(line)['text'])
-#
-#     return texts
-#
-#
-# class Corpus:
-#     def __init__(self, name, data_dir='data', skip_train=False):
-#         download(name, data_dir=data_dir)
-#         self.name = name
-#         self.train = load_texts(f'{data_dir}/{name}.train.jsonl', expected_size=250000) if not skip_train else None
-#         self.test = load_texts(f'{data_dir}/{name}.test.jsonl', expected_size=5000)
-#         self.valid = load_texts(f'{data_dir}/{name}.valid.jsonl', expected_size=5000)
-#
+
+def load_csv(path):
+    rows = []
+    with open(path, 'r') as read_obj:
+        csv_reader = reader(read_obj)
+        # Iterate over each row in the csv using reader object
+        for row in csv_reader:
+            # row variable is a list that represents a row in csv
+            rows.append(row)
+    return rows
+
+def write_csv(path, data):
+    with open(path, "w+") as f:
+        writer = csv.writer(f)
+        writer.writerows(data)
+
+
+class Corpus:
+    def __init__(self, name, data_dir='data', skip_train=False):
+        self.name = name
+        self.train = load_csv(f"{data_dir}/{name}.train.csv")
+        self.test = load_csv(f"{data_dir}/{name}.test.csv")
+        self.valid = load_csv(f"{data_dir}/{name}.val.csv")
+
 
 class EncodedDataset(Dataset):
     """
@@ -101,8 +110,53 @@ class EncodedDataset(Dataset):
         return tokens, mask, label, stat_vec
 
 
+def preload_data(data_path, output_dir, train_pct, val_pct):
+    """
+    Takes in the raw .csv file of data and splits it into train val test files.
+    """
+    rows = load_csv(data_path)[1:] # Drop the title row
+
+    num_examples = len(rows)
+    train_idx = math.floor(num_examples * train_pct / 100)
+    val_idx = train_idx + math.floor(num_examples * val_pct / 100)
+
+    ## Need to figure out what format we want the data to look like
+
+    write_csv(f"{output_dir}/real.train.csv", rows[:train_idx])
+    write_csv(f"{output_dir}/real.val.csv", rows[train_idx:val_idx])
+    write_csv(f"{output_dir}/real.test.csv", rows[val_idx:])
+
+    write_csv(f"{output_dir}/fake.train.csv", rows[:train_idx])
+    write_csv(f"{output_dir}/fake.val.csv", rows[train_idx:val_idx])
+    write_csv(f"{output_dir}/fake.test.csv", rows[val_idx:])
+
+
 # TODO: Implement DataLoader, using dataset processed by ./dataset.py
-def load_datasets(data_dir, real_dataset, fake_dataset, batch_size,
+def load_datasets(data_dir, real_dataset, fake_dataset, tokenizer, batch_size,
                   max_sequence_length, random_sequence_length,
                   epoch_size=None, token_dropout=None, seed=None, **kwargs) -> DataLoader:
-    raise NotImplementedError
+
+    real_corpus = Corpus(real_dataset, data_dir=data_dir)
+    fake_corpus = Corpus(fake_dataset, data_dir=data_dir)
+
+    real_train, real_valid = real_corpus.train, real_corpus.valid
+    fake_train, fake_valid = fake_corpus.train, fake_corpus.valid
+
+    Sampler = DistributedSampler if dist.is_available() and dist.is_initialized() and dist.get_world_size() > 1 else RandomSampler
+
+    min_sequence_length = 10 if random_sequence_length else None
+    train_dataset = EncodedDataset(real_train, fake_train, tokenizer, max_sequence_length, min_sequence_length,
+                                   epoch_size, token_dropout, seed)
+    train_loader = DataLoader(train_dataset, batch_size, sampler=Sampler(train_dataset), num_workers=0)
+
+    validation_dataset = EncodedDataset(real_valid, fake_valid, tokenizer)
+    validation_loader = DataLoader(validation_dataset, batch_size=1, sampler=Sampler(validation_dataset))
+
+    return train_loader, validation_loader
+
+
+
+############################
+## Download the dataset here: https://huggingface.co/datasets/aadityaubhat/GPT-wiki-intro/blob/main/GPT-wiki-intro.csv.zip
+
+preload_data("GPT-wiki-intro.csv", "data", 80, 10, 10)
