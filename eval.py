@@ -23,7 +23,7 @@ def evaluate_model(model, test_loader, criterion, device):
             stat_embeds = None
             # TODO: Convert Stat Vector to input_embeds size
             if not model.is_baseline:
-                stat_embeds = model.stat_embedding(stats)
+                stat_embeds = model.stat_embeddings(stats)
                 # assert input_embeds.size() == stat_embeds.size()
                 if model.early_fusion:
                     input_embeds += stat_embeds          
