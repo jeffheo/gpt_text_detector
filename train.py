@@ -67,7 +67,7 @@ class RobertaWrapper(nn.Module):
             output = outputs[0]
             output += stat_embeds
             logits = self.classifier_head(output)
-            print(logits, labels)
+            # print(logits, labels)
             loss_fct = BCEWithLogitsLoss()
             loss = loss_fct(logits, labels)
             output = (logits,) + outputs[2:]
@@ -129,7 +129,7 @@ if __name__ == '__main__':
     parser.add_argument('--device', type=str, default="cuda" if torch.cuda.is_available() else "cpu")
     parser.add_argument('--large', action='store_true', help='use the roberta-large model instead of roberta-base')
     parser.add_argument('--max-epochs', type=int, default=None)
-    parser.add_argument('--batch_size', type=int, default=1)
+    parser.add_argument('--batch_size', type=int, default=24)
     parser.add_argument('--max-sequence-length', type=int, default=128)
     parser.add_argument('--random-sequence-length', action='store_true')
     parser.add_argument('--epoch-size', type=int, default=None)

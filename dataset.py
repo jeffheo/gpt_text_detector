@@ -12,6 +12,7 @@ import torch
 from torch.utils.data import Dataset, DataLoader, DistributedSampler, RandomSampler
 from tqdm import tqdm
 from transformers import PreTrainedTokenizer
+from datasets import load_dataset
 
 from stat_extractor import StatFeatureExtractor
 import torch.distributed as dist
@@ -29,6 +30,7 @@ def load_csv(path):
             # row variable is a list that represents a row in csv
             rows.append(row)
     return rows
+
 
 def write_csv(path, data):
     with open(path, "w+") as f:
@@ -167,5 +169,6 @@ def load_datasets(data_dir, real_dataset, fake_dataset, tokenizer, stat_extracto
 
 ############################
 ## Download the dataset here: https://huggingface.co/datasets/aadityaubhat/GPT-wiki-intro/blob/main/GPT-wiki-intro.csv.zip
+# dataset = load_dataset("aadityaubhat/GPT-wiki-intro")
 
 preload_data("GPT-wiki-intro.csv", "data", 80, 10)
