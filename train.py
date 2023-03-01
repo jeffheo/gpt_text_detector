@@ -9,6 +9,7 @@ from dataset import load_datasets
 from transformers.modeling_outputs import SequenceClassifierOutput
 
 from stat_extractor import StatFeatureExtractor
+from run import run_baseline_roberta
 
 
 class RobertaWrapper(nn.Module):
@@ -137,6 +138,8 @@ if __name__ == '__main__':
     parser.add_argument('--coreference', '-c', action="store_true")
     parser.add_argument('--creativity', '-r', action="store_true")
 
+    parser.add_argument('--baseline_only', action='store_true')  # run baseline ONLY, default False
+
     args = parser.parse_args()
 
     d = {
@@ -147,8 +150,15 @@ if __name__ == '__main__':
         'creativity': args.all or args.creativity,
     }
 
+    name = f'roberta-{"large" if args.large else "base"}-openai-detector'
+    tokenizer = transformers.RobertaTokenizer.from_pretrained(name)
+    args.tokenizer = tokenizer
+
+    if args.baseline:
+        run_baseline_roberta(batch_size=args.batch_size)
+
     args.stat_extractor = StatFeatureExtractor(d)
-    stat_size = args.stat_extractor.stat_vec_size()
+    stat_size = args.stat_extractor.stat_vec_size
 
     name = f'roberta-{"large" if args.large else "base"}-openai-detector'
 

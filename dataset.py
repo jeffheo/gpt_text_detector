@@ -166,4 +166,4 @@ def load_datasets(data_dir, real_dataset, fake_dataset, tokenizer, batch_size,
 ############################
 ## Download the dataset here: https://huggingface.co/datasets/aadityaubhat/GPT-wiki-intro/blob/main/GPT-wiki-intro.csv.zip
 
-preload_data("GPT-wiki-intro.csv", "data", 80, 10, 10)
+preload_data("GPT-wiki-intro.csv", "data", 80, 10)
