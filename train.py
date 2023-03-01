@@ -19,12 +19,8 @@ class RobertaWrapper(nn.Module):
     Applies Linear Transformation and Non-linearity to Stat Vector to compute "Stat Embedding"
     forward() is same as RobertaForSequenceClassification
     """
-<<<<<<< HEAD
-    def __init__(self, roberta_seq_classifier, baseline, early_fusion, stat_vec_size = None):
-=======
 
     def __init__(self, roberta_seq_classifier, stat_vec_size, baseline, early_fusion):
->>>>>>> 0f463c4461fa86fe78129bb6f365145788881e10
         super(RobertaWrapper, self).__init__()
         # W: R^{stat_vec_size} --> R^{hidden_size}
         self.linear = nn.Linear(stat_vec_size, roberta_seq_classifier.config.hidden_size)
