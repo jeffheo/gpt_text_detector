@@ -1,3 +1,4 @@
+import os
 import torch
 from sklearn.metrics import roc_auc_score
 from tqdm import tqdm
@@ -90,8 +91,25 @@ if __name__ == '__main__':
     tokenizer = transformers.RobertaTokenizer.from_pretrained(name)
     args.tokenizer = tokenizer
 
+    model_name = ""
+    if args.baseline:
+        model_name = "baseline"
+    elif args.early_fusion:
+        model_name = "early_fusion"
+    else:
+        model_name = "late_fusion"
+    
     _roberta = transformers.RobertaForSequenceClassification.from_pretrained(name)
     _model = RobertaWrapper(_roberta, stat_size, args.baseline, args.early_fusion)
-    _, _loader = load_datasets(**vars(args))
 
-    evaluate_model(_model, _loader, torch.nn.BCELoss, args.device)
+    params_path = os.path.join('gpt_text_detector/params', f'{model_name}_parameters.pth')
+    _model.load_state_dict(torch.load(params_path))  
+    
+    _, _loader = load_datasets(**vars(args))
+    
+    loss, accuracy, auroc = evaluate_model(_model, _loader, torch.nn.BCELoss, args.device)
+    results_path = os.path.join('gpt_text_detector/results', f'{model_name}_evaluation_results.txt')
+    with open(results_path, 'w') as f:
+        f.write(f'Loss: {loss:.4f}\n')
+        f.write(f'Accuracy: {accuracy:.4f}\n')
+        f.write(f'AUC: {auroc:.4f}\n')

@@ -192,6 +192,6 @@ if __name__ == '__main__':
     else:
         param_name = "late_fusion"
     train(_model, _optimizer, _loader, not args.no_freeze, args.device)
-    
+
     params_path = os.path.join('gpt_text_detector/params', f'{param_name}_parameters.pth')
     torch.save(_model.state_dict(), params_path)
