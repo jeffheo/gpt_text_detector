@@ -83,6 +83,8 @@ class EncodedDataset(Dataset):
 
         # TODO: Encode Stat Vec
         stat_vec = self.stat_extractor.encode(text[0])
+        stat_vec = torch.tensor(stat_vec).float()
+
         # print(f'Stat Vector: {stat_vec}')
 
 
@@ -104,6 +106,7 @@ class EncodedDataset(Dataset):
 
         if self.max_sequence_length is None or len(tokens) == self.max_sequence_length:
             mask = torch.ones(len(tokens) + 2)
+
             return torch.tensor([self.tokenizer.bos_token_id] + tokens + [self.tokenizer.eos_token_id]), mask, label, stat_vec
 
         padding = [self.tokenizer.pad_token_id] * (self.max_sequence_length - len(tokens))
@@ -171,4 +174,4 @@ def load_datasets(data_dir, real_dataset, fake_dataset, tokenizer, stat_extracto
 ## Download the dataset here: https://huggingface.co/datasets/aadityaubhat/GPT-wiki-intro/blob/main/GPT-wiki-intro.csv.zip
 # dataset = load_dataset("aadityaubhat/GPT-wiki-intro")
 
-preload_data("GPT-wiki-intro.csv", "data", 80, 10)
+# preload_data("GPT-wiki-intro.csv", "data", 80, 10)

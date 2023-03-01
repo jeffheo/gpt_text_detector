@@ -29,7 +29,7 @@ class StatFeatureExtractor:
         count = get_frequency_count(text)
         for phi in self.features:
             vec += phi(text, count)
-        print("LENGTH OF FEATURE VECTOR: ", len(vec))
+        # print("LENGTH OF FEATURE VECTOR: ", len(vec))
         assert len(vec) == self.stat_vec_size
         return vec
 
@@ -56,7 +56,7 @@ def clumpiness(_, word_frequency: Counter) -> List[float]:
     :return:
     """
     x = np.array(list(word_frequency.values()))
-    print("THIS IS X", x)
+    # print("THIS IS X", x)
     diffsum = 0
     for i, xi in enumerate(x[:-1], 1):
         diffsum += np.sum(np.abs(xi - x[i:]))

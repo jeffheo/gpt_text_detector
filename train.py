@@ -87,21 +87,25 @@ def train(model: nn.Module, optimizer, loader, freeze, device):
     train_loss = 0
     with tqdm.tqdm(loader, desc="training") as loop:
         for input_ids, masks, labels, stats in loop:
-            stats = torch.tensor(stats).float()
+            # print(stats)
+            #
+            # stats = torch.tensor(stats).float()
             input_ids, masks, labels, stats = input_ids.to(device), masks.to(device), labels.to(device), stats.to(
                 device)
             batch_size = input_ids.shape[0]
 
             input_embeds = model.word_embeddings(input_ids)
+            print('input size: ', input_embeds.size())
             # print('intput', input_embeds.size())
             stat_embeds = None
             # TODO: Convert Stat Vector to input_embeds size
             if not model.is_baseline:
                 stat_embeds = model.stat_embeddings(stats)
+                print(stat_embeds.size())
                 # print('stat', stat_embeds.size())
                 # assert input_embeds.size() == stat_embeds.size()
                 if model.early_fusion:
-                    input_embeds += stat_embeds
+                    input_embeds += stat_embeds[:, None, :]
 
             optimizer.zero_grad()
             loss, logits = model(inputs_embeds=input_embeds, attention_mask=masks, labels=labels,
@@ -176,6 +180,7 @@ if __name__ == '__main__':
 
     _roberta = transformers.RobertaForSequenceClassification.from_pretrained(name)
     _model = RobertaWrapper(_roberta, stat_size, args.baseline, args.early_fusion)
+
     _optimizer = Adam(_model.parameters(), lr=args.learning_rate, weight_decay=args.weight_decay)
     _loader, _ = load_datasets(**vars(args))
 
