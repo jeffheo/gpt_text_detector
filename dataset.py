@@ -85,7 +85,7 @@ class EncodedDataset(Dataset):
 
 
         if self.max_sequence_length is None:
-            tokens = tokens[:self.tokenizer.max_len - 2]
+            tokens = tokens[:self.tokenizer.model_max_length - 2]
         else:
             output_length = min(len(tokens), self.max_sequence_length)
             if self.min_sequence_length:

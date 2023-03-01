@@ -19,16 +19,21 @@ class RobertaWrapper(nn.Module):
     Applies Linear Transformation and Non-linearity to Stat Vector to compute "Stat Embedding"
     forward() is same as RobertaForSequenceClassification
     """
+<<<<<<< HEAD
     def __init__(self, roberta_seq_classifier, baseline, early_fusion, stat_vec_size = None):
+=======
+
+    def __init__(self, roberta_seq_classifier, stat_vec_size, baseline, early_fusion):
+>>>>>>> 0f463c4461fa86fe78129bb6f365145788881e10
         super(RobertaWrapper, self).__init__()
         # W: R^{stat_vec_size} --> R^{hidden_size}
         self.linear = nn.Linear(stat_vec_size, roberta_seq_classifier.config.hidden_size)
         self.relu = nn.ReLU()
-        self.roberta_seq_classifier = roberta_seq_classifier #the whole thing
+        self.roberta_seq_classifier = roberta_seq_classifier  # the whole thing
         self.base = roberta_seq_classifier.roberta
         self.classifier_head = roberta_seq_classifier.classifier
         self.is_baseline = baseline
-        self.early_fusion = early_fusion #early or late fusion boolean flag
+        self.early_fusion = early_fusion  # early or late fusion boolean flag
 
     def stat_embeddings(self, stat):
         linear_output = self.linear(stat)
@@ -43,28 +48,30 @@ class RobertaWrapper(nn.Module):
             param.requires_grad = False
 
     def forward(
-        self,
-        input_ids: Optional[torch.LongTensor] = None,
-        attention_mask: Optional[torch.FloatTensor] = None,
-        token_type_ids: Optional[torch.LongTensor] = None,
-        position_ids: Optional[torch.LongTensor] = None,
-        head_mask: Optional[torch.FloatTensor] = None,
-        inputs_embeds: Optional[torch.FloatTensor] = None,
-        labels: Optional[torch.LongTensor] = None,
-        output_attentions: Optional[bool] = None,
-        output_hidden_states: Optional[bool] = None,
-        return_dict: Optional[bool] = None,
-        stat_embeds: Optional[torch.FloatTensor] = None
+            self,
+            input_ids: Optional[torch.LongTensor] = None,
+            attention_mask: Optional[torch.FloatTensor] = None,
+            token_type_ids: Optional[torch.LongTensor] = None,
+            position_ids: Optional[torch.LongTensor] = None,
+            head_mask: Optional[torch.FloatTensor] = None,
+            inputs_embeds: Optional[torch.FloatTensor] = None,
+            labels: Optional[torch.LongTensor] = None,
+            output_attentions: Optional[bool] = None,
+            output_hidden_states: Optional[bool] = None,
+            return_dict: Optional[bool] = None,
+            stat_embeds: Optional[torch.FloatTensor] = None
     ) -> Union[Tuple[torch.Tensor], SequenceClassifierOutput]:
         if self.early_fusion or self.is_baseline:
             return self.roberta_seq_classifier(input_ids, attention_mask, token_type_ids, position_ids, head_mask,
-                                           inputs_embeds, labels, output_attentions, output_hidden_states, return_dict)
+                                               inputs_embeds, labels, output_attentions, output_hidden_states,
+                                               return_dict)
         else:
             outputs = self.base(input_ids, attention_mask, token_type_ids, position_ids, head_mask,
-                                           inputs_embeds, labels, output_attentions, output_hidden_states, return_dict)
+                                inputs_embeds, labels, output_attentions, output_hidden_states, return_dict)
             output = outputs[0]
             output += stat_embeds
             logits = self.classifier_head(output)
+            print(logits, labels)
             loss_fct = BCEWithLogitsLoss()
             loss = loss_fct(logits, labels)
             output = (logits,) + outputs[2:]
@@ -83,23 +90,27 @@ def train(model: nn.Module, optimizer, loader, freeze, device):
     train_epoch_size = 1
     train_loss = 0
     with tqdm.tqdm(loader, desc="training") as loop:
-        print("THIS IS LOOP ++>", loop)
         for input_ids, masks, labels, stats in loop:
-            stats = torch.tensor(stats)
-            input_ids, masks, labels, stats = input_ids.to(device), masks.to(device), labels.to(device), stats.to(device)
+            stats = torch.tensor(stats).float()
+            input_ids, masks, labels, stats = input_ids.to(device), masks.to(device), labels.to(device), stats.to(
+                device)
             batch_size = input_ids.shape[0]
 
             input_embeds = model.word_embeddings(input_ids)
+            # print('intput', input_embeds.size())
             stat_embeds = None
             # TODO: Convert Stat Vector to input_embeds size
             if not model.is_baseline:
                 stat_embeds = model.stat_embeddings(stats)
-                assert input_embeds.size() == stat_embeds.size()
+                # print('stat', stat_embeds.size())
+                # assert input_embeds.size() == stat_embeds.size()
                 if model.early_fusion:
                     input_embeds += stat_embeds
 
             optimizer.zero_grad()
-            loss, logits = model(input_embeds=input_embeds, attention_mask=masks, labels=labels, stat_embeds = stat_embeds)
+            loss, logits = model(inputs_embeds=input_embeds, attention_mask=masks, labels=labels,
+                                 stat_embeds=stat_embeds, return_dict=False)
+            # print(loss, logits)
             loss.backward()
             optimizer.step()
 
@@ -131,8 +142,8 @@ if __name__ == '__main__':
     parser.add_argument('--real-dataset', type=str, default='real')
     parser.add_argument('--fake-dataset', type=str, default='fake')
     parser.add_argument('--token-dropout', type=float, default=None)
-    parser.add_argument('--early_fusion', action ="store_true")
-    parser.add_argument('--baseline', action ="store_true")
+    parser.add_argument('--early_fusion', '-f', action="store_true")
+    parser.add_argument('--baseline', action="store_true")
 
     parser.add_argument('--learning-rate', type=float, default=2e-5)
     parser.add_argument('--weight-decay', type=float, default=0)
