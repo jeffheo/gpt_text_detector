@@ -77,11 +77,12 @@ class EncodedDataset(Dataset):
                 text = self.fake_texts[index - len(self.real_texts)]
                 label = 0
 
-        tokens = self.tokenizer.encode(text[0])
+        tokens = self.tokenizer.encode(text)
 
         # TODO: Encode Stat Vec
         stat_vec = self.stat_extractor.encode(text[0])
         # print(f'Stat Vector: {stat_vec}')
+
 
         if self.max_sequence_length is None:
             tokens = tokens[:self.tokenizer.max_len - 2]
@@ -156,7 +157,8 @@ def load_datasets(data_dir, real_dataset, fake_dataset, tokenizer, stat_extracto
                                    epoch_size, token_dropout, seed)
     train_loader = DataLoader(train_dataset, batch_size, sampler=Sampler(train_dataset), num_workers=0)
 
-    validation_dataset = EncodedDataset(real_valid, fake_valid, tokenizer, stat_extractor)
+    validation_dataset = EncodedDataset(real_valid, fake_valid, tokenizer, stat_extractor, max_sequence_length, min_sequence_length,
+                                   epoch_size, token_dropout, seed)
     validation_loader = DataLoader(validation_dataset, batch_size=1, sampler=Sampler(validation_dataset))
 
     return train_loader, validation_loader

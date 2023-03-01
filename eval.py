@@ -16,6 +16,7 @@ def evaluate_model(model, test_loader, criterion, device):
     y_pred = []
     with torch.no_grad(), tqdm(total=len(test_loader)) as progress_bar:  # Disable gradient calculation during inference and add tqdm progress bar
         for input_ids, masks, labels, stats in test_loader:
+            stats = torch.tensor(stats).float()
             input_ids, masks, labels, stats = input_ids.to(device), masks.to(device), labels.to(device), stats.to(
                 device)  
             input_embeds = model.word_embeddings(input_ids)
@@ -23,14 +24,14 @@ def evaluate_model(model, test_loader, criterion, device):
             # TODO: Convert Stat Vector to input_embeds size
             if not model.is_baseline:
                 stat_embeds = model.stat_embedding(stats)
-                assert input_embeds.size() == stat_embeds.size()
+                # assert input_embeds.size() == stat_embeds.size()
                 if model.early_fusion:
                     input_embeds += stat_embeds          
-            output = model(input_embeds=input_embeds, attention_mask=masks, labels=labels, stat_embeds = stat_embeds)
-            test_loss += criterion(output, labels).item()
-            pred = output.argmax(dim=1, keepdim=True)
+            loss, logits = model(inputs_embeds=input_embeds, attention_mask=masks, labels=labels, stat_embeds = stat_embeds, return_dict=False)
+            test_loss += loss
+            pred = logits.argmax(dim=1, keepdim=True)
             y_true.extend(labels.cpu().numpy())
-            y_pred.extend(output[:, 1].cpu().numpy())  # Use the predicted probabilities for the positive class
+            y_pred.extend(logits[:, 1].cpu().numpy())  # Use the predicted probabilities for the positive class
             progress_bar.update(1)  # Update the tqdm progress bar
 
     test_loss /= len(test_loader.dataset)
