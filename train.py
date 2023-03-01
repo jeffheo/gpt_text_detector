@@ -139,7 +139,7 @@ if __name__ == '__main__':
 
     parser.add_argument('--all', '-a', action="store_true")
     parser.add_argument('--zipf', '-z', action="store_true")
-    parser.add_argument('--heaps', '-e', action="store_true")
+    parser.add_argument('--clumpiness', '-l', action="store_true")
     parser.add_argument('--punctuation', '-p', action="store_true")
     parser.add_argument('--coreference', '-c', action="store_true")
     parser.add_argument('--creativity', '-r', action="store_true")
@@ -150,7 +150,7 @@ if __name__ == '__main__':
 
     d = {
         'zipf': args.all or args.zipf,
-        'heaps': args.all or args.heaps,
+        'clumpiness': args.all or args.clumpiness,
         'punctuation': args.all or args.punctuation,
         'coreference': args.all or args.coreference,
         'creativity': args.all or args.creativity,

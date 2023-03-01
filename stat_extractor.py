@@ -8,6 +8,7 @@ import nltk
 
 
 nltk.download('wordnet')
+nltk.download('omw-1.4')
 lemmatizer = WordNetLemmatizer()
 
 
@@ -19,16 +20,16 @@ def get_frequency_count(text: str):
 
 class StatFeatureExtractor:
     def __init__(self, args: Dict[str, bool]):
-        self.features = [globals()[k] for k in args if args[k]]
+        self.features = [globals()[k] for k in args if k in globals() and args[k]]
         # TODO: How to get stat_vec_size based on what stat features we're using?
-        self.stat_vec_size = 20
+        self.stat_vec_size = 2082
 
-    def encode(self, text: str) -> List[int]:
+    def encode(self, text) -> List[int]:
         vec = []
         count = get_frequency_count(text)
         for phi in self.features:
             vec += phi(text, count)
-        print(len(vec))
+        print("LENGTH OF FEATURE VECTOR: ", len(vec))
         assert len(vec) == self.stat_vec_size
         return vec
 
@@ -42,7 +43,7 @@ def zipf(_, word_frequency: Counter) -> List[float]:
         frequencies.append(np.log10(count))
 
     rank = np.log10(np.arange(1, len(frequencies) + 1))
-    slope, _ = linregress(rank, frequencies)
+    slope = linregress(rank, frequencies)[0]
     return [slope]
 
 
@@ -54,7 +55,8 @@ def clumpiness(_, word_frequency: Counter) -> List[float]:
     Code: https://stackoverflow.com/a/61154922
     :return:
     """
-    x = np.array(word_frequency.values())
+    x = np.array(list(word_frequency.values()))
+    print("THIS IS X", x)
     diffsum = 0
     for i, xi in enumerate(x[:-1], 1):
         diffsum += np.sum(np.abs(xi - x[i:]))
