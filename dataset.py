@@ -81,7 +81,7 @@ class EncodedDataset(Dataset):
 
         # TODO: Encode Stat Vec
         stat_vec = self.stat_extractor.encode(text[0])
-        print(f'Stat Vector: {stat_vec}')
+        # print(f'Stat Vector: {stat_vec}')
 
         if self.max_sequence_length is None:
             tokens = tokens[:self.tokenizer.max_len - 2]

@@ -83,16 +83,17 @@ def train(model: nn.Module, optimizer, loader, freeze, device):
     train_epoch_size = 1
     train_loss = 0
     with tqdm.tqdm(loader, desc="training") as loop:
+        print("THIS IS LOOP ++>", loop)
         for input_ids, masks, labels, stats in loop:
-            input_ids, masks, labels, stats = input_ids.to(device), masks.to(device), labels.to(device), stats.to(
-                device)
+            stats = torch.tensor(stats)
+            input_ids, masks, labels, stats = input_ids.to(device), masks.to(device), labels.to(device), stats.to(device)
             batch_size = input_ids.shape[0]
 
             input_embeds = model.word_embeddings(input_ids)
             stat_embeds = None
             # TODO: Convert Stat Vector to input_embeds size
             if not model.is_baseline:
-                stat_embeds = model.stat_embedding(stats)
+                stat_embeds = model.stat_embeddings(stats)
                 assert input_embeds.size() == stat_embeds.size()
                 if model.early_fusion:
                     input_embeds += stat_embeds
@@ -126,7 +127,7 @@ if __name__ == '__main__':
     parser.add_argument('--random-sequence-length', action='store_true')
     parser.add_argument('--epoch-size', type=int, default=None)
     parser.add_argument('--seed', type=int, default=None)
-    parser.add_argument('--data-dir', type=str, default='data')
+    parser.add_argument('--data_dir', type=str, default='data')
     parser.add_argument('--real-dataset', type=str, default='real')
     parser.add_argument('--fake-dataset', type=str, default='fake')
     parser.add_argument('--token-dropout', type=float, default=None)
