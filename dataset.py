@@ -81,7 +81,7 @@ class EncodedDataset(Dataset):
 
         # TODO: Encode Stat Vec
         stat_vec = self.stat_extractor.encode(text[0])
-        print(f'Stat Vector: {stat_vec}')
+        # print(f'Stat Vector: {stat_vec}')
 
         if self.max_sequence_length is None:
             tokens = tokens[:self.tokenizer.max_len - 2]
@@ -101,7 +101,7 @@ class EncodedDataset(Dataset):
 
         if self.max_sequence_length is None or len(tokens) == self.max_sequence_length:
             mask = torch.ones(len(tokens) + 2)
-            return torch.tensor([self.tokenizer.bos_token_id] + tokens + [self.tokenizer.eos_token_id]), mask, label
+            return torch.tensor([self.tokenizer.bos_token_id] + tokens + [self.tokenizer.eos_token_id]), mask, label, stat_vec
 
         padding = [self.tokenizer.pad_token_id] * (self.max_sequence_length - len(tokens))
         tokens = torch.tensor([self.tokenizer.bos_token_id] + tokens + [self.tokenizer.eos_token_id] + padding)
