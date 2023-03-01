@@ -6,7 +6,7 @@ Reference:
     - https://github.com/eric-mitchell/detect-gpt/blob/main/custom_datasets.py
 """
 import numpy as np
-from typing import List
+from typing import List, Tuple
 
 import torch
 from torch.utils.data import Dataset, DataLoader, DistributedSampler, RandomSampler
@@ -81,12 +81,8 @@ class EncodedDataset(Dataset):
 
         tokens = self.tokenizer.encode(text)
 
-        # TODO: Encode Stat Vec
         stat_vec = self.stat_extractor.encode(text[0])
         stat_vec = torch.tensor(stat_vec).float()
-
-        # print(f'Stat Vector: {stat_vec}')
-
 
         if self.max_sequence_length is None:
             tokens = tokens[:self.tokenizer.model_max_length - 2]
@@ -147,7 +143,7 @@ def preload_data(data_path, output_dir, train_pct, val_pct):
 # TODO: Implement DataLoader, using dataset processed by ./dataset.py
 def load_datasets(data_dir, real_dataset, fake_dataset, tokenizer, stat_extractor, batch_size,
                   max_sequence_length, random_sequence_length,
-                  epoch_size=None, token_dropout=None, seed=None, **kwargs) -> DataLoader:
+                  epoch_size=None, token_dropout=None, seed=None, num_workers=0, **kwargs) -> Tuple[DataLoader, DataLoader]:
 
     real_corpus = Corpus(real_dataset, data_dir=data_dir)
     fake_corpus = Corpus(fake_dataset, data_dir=data_dir)
@@ -160,10 +156,12 @@ def load_datasets(data_dir, real_dataset, fake_dataset, tokenizer, stat_extracto
     min_sequence_length = 10 if random_sequence_length else None
     train_dataset = EncodedDataset(real_train, fake_train, tokenizer, stat_extractor, max_sequence_length, min_sequence_length,
                                    epoch_size, token_dropout, seed)
-    train_loader = DataLoader(train_dataset, batch_size, sampler=Sampler(train_dataset), num_workers=0)
+
+    train_loader = DataLoader(train_dataset, batch_size, sampler=Sampler(train_dataset), num_workers=num_workers)
 
     validation_dataset = EncodedDataset(real_valid, fake_valid, tokenizer, stat_extractor, max_sequence_length, min_sequence_length,
                                    epoch_size, token_dropout, seed)
+
     validation_loader = DataLoader(validation_dataset, batch_size=1, sampler=Sampler(validation_dataset))
 
     return train_loader, validation_loader

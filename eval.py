@@ -9,6 +9,7 @@ import transformers
 
 from stat_extractor import StatFeatureExtractor
 
+
 def evaluate_model(model, test_loader, criterion, device):
     model.eval()  # Set the model to evaluation mode
     test_loss = 0
@@ -43,6 +44,7 @@ def evaluate_model(model, test_loader, criterion, device):
     print(f'Test set: AUROC score: {auroc:.4f}')
 
     return test_loss, accuracy, auroc
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -83,7 +85,7 @@ if __name__ == '__main__':
         'coreference': args.all or args.coreference,
         'creativity': args.all or args.creativity,
     }
-    
+
     args.stat_extractor = StatFeatureExtractor(d)
     stat_size = args.stat_extractor.stat_vec_size
 

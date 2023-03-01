@@ -1,88 +1,108 @@
-import matplotlib.pyplot as plt
-import numpy as np
-import datasets
-import transformers
+import os
+import argparse
 import torch
 import torch.nn as nn
-from torch.utils.data import DataLoader, DistributedSampler, RandomSampler
-import torch.nn.functional as F
 from torch.optim import Adam
-import tqdm
-import random
-from sklearn.metrics import roc_curve, precision_recall_curve, auc
-import argparse
-import datetime
-import os
-import json
-import functools
-from multiprocessing.pool import ThreadPool
-import time
+import transformers
 
+from train import train, validate, RobertaWrapper
+from eval import evaluate_model
+from stat_extractor import StatFeatureExtractor
+from dataset import load_datasets
 
-def load_dummy_data():
-    return json.load(open('./toy_dataset.json'))
-
-
-def compute_auroc(real, fake):
-    """
-    Compute FPR, TPR, and AUROC Metrics.
-    Learn more about each here: https://developers.google.com/machine-learning/crash-course/classification/roc-and-auc#:~:text=An%20ROC%20curve%20(receiver%20operating,False%20Positive%20Rate
-    :param real: Scores (probabilities) for Real (Human-written) Samples
-    :param fake: Scores (probabilities) for Fake (Machine-generated) Samples
-    :return:
-    """
-    fpr, tpr, _ = roc_curve([0] * len(real) + [1] * len(fake), real + fake)
-    roc_auc = auc(fpr, tpr)
-    return fpr.tolist(), tpr.tolist(), float(roc_auc)
-
-
-def run_baseline_roberta(batch_size=1, large=False):
-    """
-    TODO: Maybe add more evaluation metrics? Precision-Recall etc.,
-    TODO: Also need to plot useful information. Some swavy matplotlib stuff might look nice.
-    Baseline: Just use OpenAI Pretrained RoBERTa.
-    Code VERY, VERY heavily influenced from detectGPT code (run.py::eval_supervised())
-    """
-    detector = transformers.AutoModelForSequenceClassification.from_pretrained(name).to(device)
-
-    # TODO: Replace with actual data loading function
-    dataset = load_dummy_data()
-    real, fake = dataset['real'], dataset['fake']
-
-    with torch.no_grad():
-        real_score = []
-        for batch in tqdm.tqdm(range(len(real) // batch_size), "Classification on Real"):
-            batch_real = real[batch * batch_size:(batch + 1) * batch_size]
-            batch_real = tokenizer(batch_real, padding=True, truncation=True, max_length=512, return_tensors="pt").to(
-                device)
-            real_score += detector(**batch_real).logits.softmax(-1)[:, 0].tolist()
-
-        fake_score = []
-        for batch in tqdm.tqdm(range(len(fake) // batch_size), "Classification on Fake"):
-            batch_fake = fake[batch * batch_size:(batch + 1) * batch_size]
-            batch_fake = tokenizer(batch_fake, padding=True, truncation=True, max_length=512, return_tensors="pt").to(
-                device)
-            fake_score += detector(**batch_fake).logits.softmax(-1)[:, 0].tolist()
-
-        fpr, tpr, auroc = compute_auroc(real_score, fake_score)
-        print(f'FPR: {fpr}\n'
-              f'TPR: {tpr}\n'
-              f'AUROC: {auroc}')
-
+logdir = "logs"
 
 if __name__ == '__main__':
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-
     parser = argparse.ArgumentParser()
-    parser.add_argument('-b', '--baseline', action='store_true')  # run baseline, default False
-    parser.add_argument('--baseline_only', action='store_true')  # run baseline ONLY, default False
 
+    parser.add_argument('--train', '-t', action='store_true')
+    parser.add_argument('--validate', '-v', action='store_true')
+    parser.add_argument('--baseline', '-b', action='store_true', help='run baseline ONLY')
+
+    parser.add_argument('--large', '-l', action='store_true', help='use the roberta-large model instead of roberta-base')
+    parser.add_argument('--device', type=str, default="cuda" if torch.cuda.is_available() else "cpu")
+
+    parser.add_argument('--max-epochs', type=int, default=None)
+    parser.add_argument('--batch-size', type=int, default=24)
+    parser.add_argument('--max-sequence-length', type=int, default=128)
+    parser.add_argument('--random-sequence-length', action='store_true')
+    parser.add_argument('--epoch-size', type=int, default=None, help='size of dataset at each epoch')
+    parser.add_argument('--seed', type=int, default=None)
+    parser.add_argument('--data-dir', type=str, default='data')
+    parser.add_argument('--real-dataset', type=str, default='real')
+    parser.add_argument('--fake-dataset', type=str, default='fake')
+    parser.add_argument('--token-dropout', type=float, default=None)
+    parser.add_argument('--learning-rate', type=float, default=2e-5)
+    parser.add_argument('--weight-decay', type=float, default=0)
+
+    # model hyper-parameters
+    parser.add_argument('--early-fusion', action="store_true")
+    parser.add_argument('--unfreeze', action="store_true", help="unfreeze base RobertaForSequenceClassifier")
+    parser.add_argument('--use-all-stats', action="store_true")
+
+    # stat feature parameters
+    parser.add_argument('--zipf', '-z', action="store_true")
+    parser.add_argument('--clumpiness', '-c', action="store_true")
+    parser.add_argument('--punctuation', '-p', action="store_true")
+    # parser.add_argument('--coreference', '-c', action="store_true")
+    # parser.add_argument('--creativity', '-r', action="store_true")
     args = parser.parse_args()
 
     name = f'roberta-{"large" if args.large else "base"}-openai-detector'
-    tokenizer = transformers.RobertaTokenizer.from_pretrained(name)
+    args.tokenizer = transformers.RobertaTokenizer.from_pretrained(name)
+    base = transformers.RobertaForSequenceClassification.from_pretrained(name)
 
-    if args.baseline:
-        run_baseline_roberta(batch_size=args.batch_size)
+    # stat_size = None
+    # args.stat_extractor = None
+    # if not args.baseline:
+    args.stat_extractor = StatFeatureExtractor({
+        'zipf': args.use_all_stats or args.zipf,
+        'clumpiness': args.use_all_stats or args.clumpiness,
+        'punctuation': args.use_all_stats or args.punctuation,
+    })
+    stat_size = args.stat_extractor.stat_vec_size
 
-    # TODO: Experiment Pipeline for Main Model
+    model = RobertaWrapper(base, stat_size, args.unfreeze, args.baseline, args.early_fusion).to(args.device)
+    optimizer = Adam(model.parameters(), lr=args.learning_rate, weight_decay=args.weight_decay)
+    train_loader, val_loader = load_datasets(**vars(args))
+
+    if args.train:
+        print(f'Training {"BASE" if args.baseline else "MAIN"} Model...')
+        os.makedirs(logdir, exist_ok=True)
+
+        from torch.utils.tensorboard import SummaryWriter
+        writer = SummaryWriter(logdir)
+
+        best_validation_accuracy = 0
+        max_epochs = args.max_epochs or 1
+        for epoch in range(1, max_epochs + 1):
+            train_results = train(model, optimizer, train_loader, args.device, f'EPOCH {epoch}')
+            print("Train Results", train_results)
+            validation_results = validate(model, val_loader, args.device)
+            print("Validation Results", validation_results)
+            train_results["accuracy"] /= train_results["epoch_size"]
+            train_results["loss"] /= train_results["loss"]
+            validation_results["accuracy"] /= validation_results["epoch_size"]
+            validation_results["loss"] /= validation_results["loss"]
+
+            for key in train_results:
+                writer.add_scalar(key, train_results[key], global_step=epoch)
+                writer.add_scalar(key, validation_results[key], global_step=epoch)
+
+            if validation_results["accuracy"] > best_validation_accuracy:
+                best_validation_accuracy = validation_results["accuracy"]
+                print("New Best Validation Accuracy: {:.4f}".format(best_validation_accuracy))
+                model_to_save = model.module if hasattr(model, 'module') else model
+                # Checkpoint best model
+                torch.save(dict(
+                        epoch=epoch,
+                        model_state_dict=model_to_save.state_dict(),
+                        optimizer_state_dict=optimizer.state_dict(),
+                        args=args
+                    ),
+                    os.path.join(logdir, "best-model.pt")
+                )
+
+    # TODO: Actually test model and get results
+    elif args.eval:
+        evaluate_model(model, val_loader, nn.BCELoss, args.device)
