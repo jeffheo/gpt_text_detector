@@ -1,0 +1,11 @@
+transformers>=2.0.0
+tqdm>=4.32.2
+torch>=1.2.0
+tensorboard>=1.14.0
+numpy
+scipy
+nltk
+openai
+scikit-learn
+datasets
+nltk
