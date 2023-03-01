@@ -16,7 +16,7 @@ def evaluate_model(model, test_loader, criterion, device):
     y_pred = []
     with torch.no_grad(), tqdm(total=len(test_loader)) as progress_bar:  # Disable gradient calculation during inference and add tqdm progress bar
         for input_ids, masks, labels, stats in test_loader:
-            stats = torch.tensor(stats).float()
+            # stats = torch.tensor(stats).float()
             input_ids, masks, labels, stats = input_ids.to(device), masks.to(device), labels.to(device), stats.to(
                 device)  
             input_embeds = model.word_embeddings(input_ids)
