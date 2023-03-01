@@ -1,3 +1,4 @@
+import os
 import torch
 import torch.nn as nn
 from torch.nn import BCEWithLogitsLoss
@@ -183,5 +184,14 @@ if __name__ == '__main__':
 
     _optimizer = Adam(_model.parameters(), lr=args.learning_rate, weight_decay=args.weight_decay)
     _loader, _ = load_datasets(**vars(args))
-
+    param_name = ""
+    if args.baseline:
+        param_name = "baseline"
+    elif args.early_fusion:
+        param_name = "early_fusion"
+    else:
+        param_name = "late_fusion"
     train(_model, _optimizer, _loader, not args.no_freeze, args.device)
+    
+    params_path = os.path.join('gpt_text_detector/params', f'{param_name}_parameters.pth')
+    torch.save(_model.state_dict(), params_path)
