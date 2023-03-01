@@ -19,7 +19,7 @@ class RobertaWrapper(nn.Module):
     Applies Linear Transformation and Non-linearity to Stat Vector to compute "Stat Embedding"
     forward() is same as RobertaForSequenceClassification
     """
-    def __init__(self, roberta_seq_classifier, stat_vec_size, baseline, early_fusion):
+    def __init__(self, roberta_seq_classifier, baseline, early_fusion, stat_vec_size = None):
         super(RobertaWrapper, self).__init__()
         # W: R^{stat_vec_size} --> R^{hidden_size}
         self.linear = nn.Linear(stat_vec_size, roberta_seq_classifier.config.hidden_size)
@@ -159,9 +159,6 @@ if __name__ == '__main__':
     name = f'roberta-{"large" if args.large else "base"}-openai-detector'
     tokenizer = transformers.RobertaTokenizer.from_pretrained(name)
     args.tokenizer = tokenizer
-
-    if args.baseline:
-        run_baseline_roberta(batch_size=args.batch_size)
 
     args.stat_extractor = StatFeatureExtractor(d)
     stat_size = args.stat_extractor.stat_vec_size

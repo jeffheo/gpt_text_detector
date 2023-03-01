@@ -76,11 +76,11 @@ class EncodedDataset(Dataset):
             else:
                 text = self.fake_texts[index - len(self.real_texts)]
                 label = 0
-        # print("This is the text", text)
-        tokens = self.tokenizer.encode(text[0])
+
+        tokens = self.tokenizer.encode(text)
 
         # TODO: Encode Stat Vec
-        stat_vec = self.stat_extractor.encode(text[0])
+        stat_vec = self.stat_extractor.encode(text)
         print(f'Stat Vector: {stat_vec}')
 
         if self.max_sequence_length is None:

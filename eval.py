@@ -46,30 +46,48 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--device', type=str, default="cuda" if torch.cuda.is_available() else "cpu")
     parser.add_argument('--large', action='store_true', help='use the roberta-large model instead of roberta-base')
+    parser.add_argument('--max-epochs', type=int, default=None)
+    parser.add_argument('--batch_size', type=int, default=1)
+    parser.add_argument('--max-sequence-length', type=int, default=128)
+    parser.add_argument('--random-sequence-length', action='store_true')
+    parser.add_argument('--epoch-size', type=int, default=None)
+    parser.add_argument('--seed', type=int, default=None)
+    parser.add_argument('--data-dir', type=str, default='data')
+    parser.add_argument('--real-dataset', type=str, default='real')
+    parser.add_argument('--fake-dataset', type=str, default='fake')
+    parser.add_argument('--token-dropout', type=float, default=None)
     parser.add_argument('--early_fusion', action ="store_true")
     parser.add_argument('--baseline', action ="store_true")
 
+    parser.add_argument('--learning-rate', type=float, default=2e-5)
+    parser.add_argument('--weight-decay', type=float, default=0)
+    parser.add_argument('--no_freeze', action='store_true')
+
     parser.add_argument('--all', '-a', action="store_true")
     parser.add_argument('--zipf', '-z', action="store_true")
-    parser.add_argument('--heaps', '-e', action="store_true")
+    parser.add_argument('--clumpiness', '-l', action="store_true")
     parser.add_argument('--punctuation', '-p', action="store_true")
     parser.add_argument('--coreference', '-c', action="store_true")
     parser.add_argument('--creativity', '-r', action="store_true")
+
+    parser.add_argument('--baseline_only', action='store_true')  # run baseline ONLY, default False
 
     args = parser.parse_args()
 
     d = {
         'zipf': args.all or args.zipf,
-        'heaps': args.all or args.heaps,
+        'clumpiness': args.all or args.clumpiness,
         'punctuation': args.all or args.punctuation,
         'coreference': args.all or args.coreference,
         'creativity': args.all or args.creativity,
     }
-
+    
     args.stat_extractor = StatFeatureExtractor(d)
-    stat_size = args.stat_extractor.stat_vec_size()
+    stat_size = args.stat_extractor.stat_vec_size
 
     name = f'roberta-{"large" if args.large else "base"}-openai-detector'
+    tokenizer = transformers.RobertaTokenizer.from_pretrained(name)
+    args.tokenizer = tokenizer
 
     _roberta = transformers.RobertaForSequenceClassification.from_pretrained(name)
     _model = RobertaWrapper(_roberta, stat_size, args.baseline, args.early_fusion)
