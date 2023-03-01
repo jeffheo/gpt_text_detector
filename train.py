@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+from torch.nn import BCEWithLogitsLoss
 import transformers
 import tqdm
 import argparse
@@ -59,10 +60,15 @@ class RobertaWrapper(nn.Module):
             return self.roberta_seq_classifier(input_ids, attention_mask, token_type_ids, position_ids, head_mask,
                                            inputs_embeds, labels, output_attentions, output_hidden_states, return_dict)
         else:
-            output = self.base(input_ids, attention_mask, token_type_ids, position_ids, head_mask,
+            outputs = self.base(input_ids, attention_mask, token_type_ids, position_ids, head_mask,
                                            inputs_embeds, labels, output_attentions, output_hidden_states, return_dict)
+            output = outputs[0]
             output += stat_embeds
-            return self.classifier_head(output)
+            logits = self.classifier_head(output)
+            loss_fct = BCEWithLogitsLoss()
+            loss = loss_fct(logits, labels)
+            output = (logits,) + outputs[2:]
+            return ((loss,) + output) if loss is not None else output
 
 
 def train(model: nn.Module, optimizer, loader, freeze, device):
@@ -166,6 +172,6 @@ if __name__ == '__main__':
     _roberta = transformers.RobertaForSequenceClassification.from_pretrained(name)
     _model = RobertaWrapper(_roberta, stat_size, args.baseline, args.early_fusion)
     _optimizer = Adam(_model.parameters(), lr=args.learning_rate, weight_decay=args.weight_decay)
-    _loader = load_datasets(**vars(args))
+    _loader, _ = load_datasets(**vars(args))
 
     train(_model, _optimizer, _loader, not args.no_freeze, args.device)

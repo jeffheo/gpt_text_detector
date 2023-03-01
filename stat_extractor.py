@@ -19,7 +19,7 @@ def get_frequency_count(text: str):
 
 class StatFeatureExtractor:
     def __init__(self, args: Dict[str, bool]):
-        self.features = [locals()[k] for k in args if args[k]]
+        self.features = [globals()[k] for k in args if args[k]]
         # TODO: How to get stat_vec_size based on what stat features we're using?
         self.stat_vec_size = 20
 
