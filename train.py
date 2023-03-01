@@ -121,8 +121,8 @@ if __name__ == '__main__':
     parser.add_argument('--epoch-size', type=int, default=None)
     parser.add_argument('--seed', type=int, default=None)
     parser.add_argument('--data-dir', type=str, default='data')
-    parser.add_argument('--real-dataset', type=str, default='webtext')
-    parser.add_argument('--fake-dataset', type=str, default='xl-1542M-k40')
+    parser.add_argument('--real-dataset', type=str, default='real')
+    parser.add_argument('--fake-dataset', type=str, default='fake')
     parser.add_argument('--token-dropout', type=float, default=None)
     parser.add_argument('--early_fusion', action ="store_true")
     parser.add_argument('--baseline', action ="store_true")
@@ -159,6 +159,7 @@ if __name__ == '__main__':
 
     args.stat_extractor = StatFeatureExtractor(d)
     stat_size = args.stat_extractor.stat_vec_size
+    args.stat_size = stat_size
 
     name = f'roberta-{"large" if args.large else "base"}-openai-detector'
 

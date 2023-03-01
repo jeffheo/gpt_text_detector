@@ -4,12 +4,15 @@ from typing import List, Dict
 from nltk.stem import WordNetLemmatizer
 from scipy.stats import linregress
 from collections import Counter
+import nltk
 
+
+nltk.download('wordnet')
 lemmatizer = WordNetLemmatizer()
 
 
 def get_frequency_count(text: str):
-    tokens = [lemmatizer.lemmatize(w) for w in text.split(' ')]
+    tokens = [lemmatizer.lemmatize(w) for w in text]
     counts = Counter(tokens)
     return counts
 
@@ -25,6 +28,7 @@ class StatFeatureExtractor:
         count = get_frequency_count(text)
         for phi in self.features:
             vec += phi(text, count)
+        print(len(vec))
         assert len(vec) == self.stat_vec_size
         return vec
 

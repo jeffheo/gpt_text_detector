@@ -139,7 +139,7 @@ def preload_data(data_path, output_dir, train_pct, val_pct):
 
 
 # TODO: Implement DataLoader, using dataset processed by ./dataset.py
-def load_datasets(data_dir, real_dataset, fake_dataset, tokenizer, batch_size,
+def load_datasets(data_dir, real_dataset, fake_dataset, tokenizer, stat_extractor, batch_size,
                   max_sequence_length, random_sequence_length,
                   epoch_size=None, token_dropout=None, seed=None, **kwargs) -> DataLoader:
 
@@ -152,11 +152,11 @@ def load_datasets(data_dir, real_dataset, fake_dataset, tokenizer, batch_size,
     Sampler = DistributedSampler if dist.is_available() and dist.is_initialized() and dist.get_world_size() > 1 else RandomSampler
 
     min_sequence_length = 10 if random_sequence_length else None
-    train_dataset = EncodedDataset(real_train, fake_train, tokenizer, max_sequence_length, min_sequence_length,
+    train_dataset = EncodedDataset(real_train, fake_train, tokenizer, stat_extractor, max_sequence_length, min_sequence_length,
                                    epoch_size, token_dropout, seed)
     train_loader = DataLoader(train_dataset, batch_size, sampler=Sampler(train_dataset), num_workers=0)
 
-    validation_dataset = EncodedDataset(real_valid, fake_valid, tokenizer)
+    validation_dataset = EncodedDataset(real_valid, fake_valid, tokenizer, stat_extractor)
     validation_loader = DataLoader(validation_dataset, batch_size=1, sampler=Sampler(validation_dataset))
 
     return train_loader, validation_loader
