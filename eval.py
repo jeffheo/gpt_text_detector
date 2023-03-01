@@ -91,6 +91,6 @@ if __name__ == '__main__':
 
     _roberta = transformers.RobertaForSequenceClassification.from_pretrained(name)
     _model = RobertaWrapper(_roberta, stat_size, args.baseline, args.early_fusion)
-    _loader = load_datasets(**vars(args))
+    _, _loader = load_datasets(**vars(args))
 
     evaluate_model(_model, _loader, torch.nn.BCELoss, args.device)
