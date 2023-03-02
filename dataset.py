@@ -28,7 +28,7 @@ def load_csv(path):
         # Iterate over each row in the csv using reader object
         for row in csv_reader:
             # row variable is a list that represents a row in csv
-            rows.append(row)
+            rows.append(row[0])
     return rows
 
 
@@ -50,8 +50,9 @@ class EncodedDataset(Dataset):
     """
     EncodedDataset from https://github.com/openai/gpt-2-output-dataset/blob/2c102400c7e4e698acd3f0e51d3b6cf1c637c0fe/detector/dataset.py
     """
+
     def __init__(self, real_texts: List[str], fake_texts: List[str], tokenizer: PreTrainedTokenizer,
-                 stat_extractor: StatFeatureExtractor, max_sequence_length: int = None, min_sequence_length: int = None,
+                 stat_extractor=None, max_sequence_length: int = None, min_sequence_length: int = None,
                  epoch_size: int = None, token_dropout: float = None, seed: int = None, **kwargs):
         self.real_texts = real_texts
         self.fake_texts = fake_texts
@@ -81,8 +82,10 @@ class EncodedDataset(Dataset):
 
         tokens = self.tokenizer.encode(text)
 
-        stat_vec = self.stat_extractor.encode(text[0])
-        stat_vec = torch.tensor(stat_vec).float()
+        stat_vec = torch.zeros(1)
+        if self.stat_extractor:
+            stat_vec = self.stat_extractor.encode(text[0])
+            stat_vec = torch.tensor(stat_vec).float()
 
         if self.max_sequence_length is None:
             tokens = tokens[:self.tokenizer.model_max_length - 2]
@@ -103,7 +106,8 @@ class EncodedDataset(Dataset):
         if self.max_sequence_length is None or len(tokens) == self.max_sequence_length:
             mask = torch.ones(len(tokens) + 2)
 
-            return torch.tensor([self.tokenizer.bos_token_id] + tokens + [self.tokenizer.eos_token_id]), mask, label, stat_vec
+            return torch.tensor(
+                [self.tokenizer.bos_token_id] + tokens + [self.tokenizer.eos_token_id]), mask, label, stat_vec
 
         padding = [self.tokenizer.pad_token_id] * (self.max_sequence_length - len(tokens))
         tokens = torch.tensor([self.tokenizer.bos_token_id] + tokens + [self.tokenizer.eos_token_id] + padding)
@@ -116,14 +120,14 @@ def preload_data(data_path, output_dir, train_pct, val_pct):
     """
     Takes in the raw .csv file of data and splits it into train val test files.
     """
-    rows = load_csv(data_path)[1:] # Drop the title row
+    rows = load_csv(data_path)[1:]  # Drop the title row
 
     real = []
     fake = []
     for row in rows:
         # Have rows only contain generated and non
-        real.append([row[3]]) # wiki intro
-        fake.append([row[3]]) # generated intro
+        real.append([row[3]])  # wiki intro
+        fake.append([row[3]])  # generated intro
 
     num_examples = len(rows)
     train_idx = math.floor(num_examples * train_pct / 100)
@@ -141,32 +145,36 @@ def preload_data(data_path, output_dir, train_pct, val_pct):
 
 
 # TODO: Implement DataLoader, using dataset processed by ./dataset.py
-def load_datasets(data_dir, real_dataset, fake_dataset, tokenizer, stat_extractor, batch_size,
+def load_datasets(data_dir, real_dataset, fake_dataset, tokenizer, batch_size,
                   max_sequence_length, random_sequence_length,
-                  epoch_size=None, token_dropout=None, seed=None, num_workers=0, **kwargs) -> Tuple[DataLoader, DataLoader]:
-
+                  stat_extractor=None, epoch_size=None, token_dropout=None, seed=None, num_workers=0, **kwargs) -> Tuple[
+    DataLoader, DataLoader, DataLoader]:
     real_corpus = Corpus(real_dataset, data_dir=data_dir)
     fake_corpus = Corpus(fake_dataset, data_dir=data_dir)
 
-    real_train, real_valid = real_corpus.train, real_corpus.valid
-    fake_train, fake_valid = fake_corpus.train, fake_corpus.valid
+    real_train, real_valid, real_test = real_corpus.train, real_corpus.valid, real_corpus.test
+    fake_train, fake_valid, fake_test = fake_corpus.train, fake_corpus.valid, fake_corpus.test
 
     Sampler = DistributedSampler if dist.is_available() and dist.is_initialized() and dist.get_world_size() > 1 else RandomSampler
 
     min_sequence_length = 10 if random_sequence_length else None
-    train_dataset = EncodedDataset(real_train, fake_train, tokenizer, stat_extractor, max_sequence_length, min_sequence_length,
+    train_dataset = EncodedDataset(real_train, fake_train, tokenizer, stat_extractor, max_sequence_length,
+                                   min_sequence_length,
                                    epoch_size, token_dropout, seed)
 
     train_loader = DataLoader(train_dataset, batch_size, sampler=Sampler(train_dataset), num_workers=num_workers)
 
-    validation_dataset = EncodedDataset(real_valid, fake_valid, tokenizer, stat_extractor, max_sequence_length, min_sequence_length,
-                                   epoch_size, token_dropout, seed)
+    validation_dataset = EncodedDataset(real_valid, fake_valid, tokenizer, stat_extractor, max_sequence_length,
+                                        min_sequence_length,
+                                        epoch_size, token_dropout, seed)
 
-    validation_loader = DataLoader(validation_dataset, batch_size=1, sampler=Sampler(validation_dataset))
+    validation_loader = DataLoader(validation_dataset, batch_size, sampler=Sampler(validation_dataset))
 
-    return train_loader, validation_loader
+    test_dataset = EncodedDataset(real_test, fake_test, tokenizer, stat_extractor, max_sequence_length,
+                                  min_sequence_length, epoch_size, token_dropout=None, seed=seed)
 
-
+    test_loader = DataLoader(test_dataset, batch_size, sampler=Sampler(test_dataset))
+    return train_loader, validation_loader, test_loader
 
 ############################
 ## Download the dataset here: https://huggingface.co/datasets/aadityaubhat/GPT-wiki-intro/blob/main/GPT-wiki-intro.csv.zip

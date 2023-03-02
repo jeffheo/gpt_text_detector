@@ -29,8 +29,8 @@ def evaluate_model(model, test_loader, criterion, device):
                 stat_embeds = model.stat_embeddings(stats)
                 # assert input_embeds.size() == stat_embeds.size()
                 if model.early_fusion:
-                    input_embeds += stat_embeds          
-            loss, logits = model(inputs_embeds=input_embeds, attention_mask=None, labels=labels, stat_embeds = stat_embeds, return_dict=False)
+                    input_embeds += stat_embeds
+            loss, logits = model(inputs_embeds=input_embeds, attention_mask=masks, labels=labels, stat_embeds=stat_embeds, return_dict=False)
             test_loss += loss
             pred = logits.argmax(dim=1, keepdim=True)
             logits = logits.detach().numpy()

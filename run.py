@@ -16,8 +16,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
 
     parser.add_argument('--train', '-t', action='store_true')
-    parser.add_argument('--validate', '-v', action='store_true')
-    parser.add_argument('--test', action='store_true')
+    parser.add_argument('--test', '-e', action='store_true')
     parser.add_argument('--baseline', '-b', action='store_true', help='run baseline ONLY')
 
     parser.add_argument('--large', '-l', action='store_true', help='use the roberta-large model instead of roberta-base')
@@ -38,10 +37,12 @@ if __name__ == '__main__':
 
     # model hyper-parameters
     parser.add_argument('--early-fusion', action="store_true")
+    # TODO: late-fusion
     parser.add_argument('--unfreeze', action="store_true", help="unfreeze base RobertaForSequenceClassifier")
     parser.add_argument('--use-all-stats', action="store_true")
 
     # stat feature parameters
+    # TODO: add more
     parser.add_argument('--zipf', '-z', action="store_true")
     parser.add_argument('--clumpiness', '-c', action="store_true")
     parser.add_argument('--punctuation', '-p', action="store_true")
@@ -53,19 +54,18 @@ if __name__ == '__main__':
     args.tokenizer = transformers.RobertaTokenizer.from_pretrained(name)
     base = transformers.RobertaForSequenceClassification.from_pretrained(name)
 
-    # stat_size = None
-    # args.stat_extractor = None
-    # if not args.baseline:
-    args.stat_extractor = StatFeatureExtractor({
-        'zipf': args.use_all_stats or args.zipf,
-        'clumpiness': args.use_all_stats or args.clumpiness,
-        'punctuation': args.use_all_stats or args.punctuation,
-    })
-    stat_size = args.stat_extractor.stat_vec_size
+    stat_size = None
+    if not args.baseline:
+        args.stat_extractor = StatFeatureExtractor({
+            'zipf': args.use_all_stats or args.zipf,
+            'clumpiness': args.use_all_stats or args.clumpiness,
+            'punctuation': args.use_all_stats or args.punctuation,
+        })
+        stat_size = args.stat_extractor.stat_vec_size
 
     model = RobertaWrapper(base, stat_size, args.unfreeze, args.baseline, args.early_fusion).to(args.device)
     optimizer = Adam(model.parameters(), lr=args.learning_rate, weight_decay=args.weight_decay)
-    train_loader, val_loader = load_datasets(**vars(args))
+    train_loader, val_loader, test_loader = load_datasets(**vars(args))
 
     if args.train:
         print(f'Training {"BASE" if args.baseline else "MAIN"} Model...')
@@ -130,4 +130,4 @@ if __name__ == '__main__':
         with open(results_path, 'w') as f:
             f.write(f'Loss: {loss:.4f}\n')
             f.write(f'Accuracy: {accuracy:.4f}\n')
-            f.write(f'AUC: {auroc:.4f}\n')      
+            f.write(f'AUC: {auroc:.4f}\n')
