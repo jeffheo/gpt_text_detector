@@ -23,7 +23,7 @@ if __name__ == '__main__':
     parser.add_argument('--large', '-l', action='store_true', help='use the roberta-large model instead of roberta-base')
     parser.add_argument('--device', type=str, default="cuda" if torch.cuda.is_available() else "cpu")
 
-    parser.add_argument('--max-epochs', type=int, default=None)
+    parser.add_argument('--max-epochs', type=int, default=10)
     parser.add_argument('--batch-size', type=int, default=24)
     parser.add_argument('--max-sequence-length', type=int, default=128)
     parser.add_argument('--random-sequence-length', action='store_true')
