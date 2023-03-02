@@ -80,11 +80,12 @@ class EncodedDataset(Dataset):
                 text = self.fake_texts[index - len(self.real_texts)]
                 label = 0
 
+        # This will throw truncation warning, but truncation is explicitly handled below, so should be fine i think...?
         tokens = self.tokenizer.encode(text)
 
         stat_vec = torch.zeros(1)
         if self.stat_extractor:
-            stat_vec = self.stat_extractor.encode(text[0])
+            stat_vec = self.stat_extractor.encode(text)
             stat_vec = torch.tensor(stat_vec).float()
 
         if self.max_sequence_length is None:
@@ -170,6 +171,7 @@ def load_datasets(data_dir, real_dataset, fake_dataset, tokenizer, batch_size,
 
     validation_loader = DataLoader(validation_dataset, batch_size, sampler=Sampler(validation_dataset))
 
+    # exactly the same as other datasets, but set dropout explicitly to None
     test_dataset = EncodedDataset(real_test, fake_test, tokenizer, stat_extractor, max_sequence_length,
                                   min_sequence_length, epoch_size, token_dropout=None, seed=seed)
 

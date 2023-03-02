@@ -18,6 +18,7 @@ if __name__ == '__main__':
     parser.add_argument('--train', '-t', action='store_true')
     parser.add_argument('--test', '-e', action='store_true')
     parser.add_argument('--baseline', '-b', action='store_true', help='run baseline ONLY')
+    parser.add_argument('--from-checkpoint', action='store_true', help='load model from checkpoint')
 
     parser.add_argument('--large', '-l', action='store_true', help='use the roberta-large model instead of roberta-base')
     parser.add_argument('--device', type=str, default="cuda" if torch.cuda.is_available() else "cpu")
@@ -46,13 +47,13 @@ if __name__ == '__main__':
     parser.add_argument('--zipf', '-z', action="store_true")
     parser.add_argument('--clumpiness', '-c', action="store_true")
     parser.add_argument('--punctuation', '-p', action="store_true")
-    # parser.add_argument('--coreference', '-c', action="store_true")
-    # parser.add_argument('--creativity', '-r', action="store_true")
     args = parser.parse_args()
 
     name = f'roberta-{"large" if args.large else "base"}-openai-detector'
     args.tokenizer = transformers.RobertaTokenizer.from_pretrained(name)
     base = transformers.RobertaForSequenceClassification.from_pretrained(name)
+
+    unfreeze = args.unfreeze
 
     stat_size = None
     if not args.baseline:
@@ -62,8 +63,12 @@ if __name__ == '__main__':
             'punctuation': args.use_all_stats or args.punctuation,
         })
         stat_size = args.stat_extractor.stat_vec_size
+    else:
+        if args.train:
+            # if fine-tuning pre-trained roberta, unfreeze
+            unfreeze = True
 
-    model = RobertaWrapper(base, stat_size, args.unfreeze, args.baseline, args.early_fusion).to(args.device)
+    model = RobertaWrapper(base, stat_size, unfreeze, args.baseline, args.early_fusion).to(args.device)
     optimizer = Adam(model.parameters(), lr=args.learning_rate, weight_decay=args.weight_decay)
     train_loader, val_loader, test_loader = load_datasets(**vars(args))
 
@@ -78,9 +83,7 @@ if __name__ == '__main__':
         max_epochs = args.max_epochs or 1
         for epoch in range(1, max_epochs + 1):
             train_results = train(model, optimizer, train_loader, args.device, f'EPOCH {epoch}')
-            print("Train Results", train_results)
             validation_results = validate(model, val_loader, args.device)
-            print("Validation Results", validation_results)
             train_results["accuracy"] /= train_results["epoch_size"]
             train_results["loss"] /= train_results["loss"]
             validation_results["accuracy"] /= validation_results["epoch_size"]
@@ -106,12 +109,14 @@ if __name__ == '__main__':
 
     # TODO: Actually test model and get results
     elif args.test:
-        checkpoint = torch.load(os.path.join(logdir, "best-model.pt"))
-        model_state_dict = checkpoint['model_state_dict']
-        model.load_state_dict(model_state_dict)
-        loss, accuracy, auroc, fpr, tpr = evaluate_model(model, val_loader, nn.BCELoss, args.device)
+        # load model from checkpoint if it is main model, or if we're using fine-tuned baseline
+        if not args.baseline or args.from_checkpoint:
+            data = torch.load(os.path.join(logdir, "best-model.pt"))
+            model.load_state_dict(data["model_state_dict"])
+
+        loss, auroc, fpr, tpr = evaluate_model(model, test_loader, nn.BCELoss, args.device)
         plt.plot(fpr, tpr)
-        plt.plot([0, 1], [0, 1], 'k--') # diagonal line
+        plt.plot([0, 1], [0, 1], 'k--')  # diagonal line
         plt.xlabel('False positive rate')
         plt.ylabel('True positive rate')
         plt.title('ROC curve (AUROC = {:.3f})'.format(auroc))
@@ -123,11 +128,10 @@ if __name__ == '__main__':
             model_name = "early_fusion"
         else:
             model_name = "late_fusion"
-        plt.savefig(f'{model_name}_roc_curve.jpg') # save the plot as a JPG file
-
-        plt.show()
-        results_path = os.path.join('gpt_text_detector/results', f'{model_name}_evaluation_results.txt')
-        with open(results_path, 'w') as f:
+        plt.savefig(f'{model_name}_roc_curve.jpg')  # save the plot as a JPG file
+        os.makedirs('results', exist_ok=True)
+        results_path = os.path.join('results', f'{model_name}_evaluation_results.txt')
+        with open(results_path, 'w+') as f:
             f.write(f'Loss: {loss:.4f}\n')
-            f.write(f'Accuracy: {accuracy:.4f}\n')
+            # f.write(f'Accuracy: {accuracy:.4f}\n')
             f.write(f'AUC: {auroc:.4f}\n')
