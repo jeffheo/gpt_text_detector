@@ -1,6 +1,8 @@
 import os
+import numpy as np
 import torch
-from sklearn.metrics import roc_auc_score
+from sklearn.metrics import roc_auc_score, roc_curve
+import matplotlib.pyplot as plt
 from tqdm import tqdm
 import argparse 
 from dataset import load_datasets
@@ -23,18 +25,21 @@ def evaluate_model(model, test_loader, criterion, device):
                 device)  
             input_embeds = model.word_embeddings(input_ids)
             stat_embeds = None
-            # TODO: Convert Stat Vector to input_embeds size
             if not model.is_baseline:
                 stat_embeds = model.stat_embeddings(stats)
                 # assert input_embeds.size() == stat_embeds.size()
                 if model.early_fusion:
                     input_embeds += stat_embeds          
-            loss, logits = model(inputs_embeds=input_embeds, attention_mask=masks, labels=labels, stat_embeds = stat_embeds, return_dict=False)
+            loss, logits = model(inputs_embeds=input_embeds, attention_mask=None, labels=labels, stat_embeds = stat_embeds, return_dict=False)
             test_loss += loss
             pred = logits.argmax(dim=1, keepdim=True)
-            y_true.extend(labels.cpu().numpy())
-            y_pred.extend(logits[:, 1].cpu().numpy())  # Use the predicted probabilities for the positive class
+            logits = logits.detach().numpy()
+            y_true.extend(labels.numpy())
+            y_pred.extend(logits)  # Use the predicted probabilities for the positive class
             progress_bar.update(1)  # Update the tqdm progress bar
+
+    y_true = np.array(y_true)
+    y_pred = np.array(y_pred)
 
     test_loss /= len(test_loader.dataset)
     accuracy = 100. * correct / len(test_loader.dataset)
@@ -42,8 +47,9 @@ def evaluate_model(model, test_loader, criterion, device):
     
     auroc = roc_auc_score(y_true, y_pred)
     print(f'Test set: AUROC score: {auroc:.4f}')
+    fpr, tpr, thresholds = roc_curve(y_true, y_pred)
 
-    return test_loss, accuracy, auroc
+    return test_loss, accuracy, auroc, fpr, tpr
 
 
 if __name__ == '__main__':
@@ -109,7 +115,16 @@ if __name__ == '__main__':
     
     _, _loader = load_datasets(**vars(args))
     
-    loss, accuracy, auroc = evaluate_model(_model, _loader, torch.nn.BCELoss, args.device)
+    loss, accuracy, auroc, fpr, tpr = evaluate_model(_model, _loader, torch.nn.BCELoss, args.device)
+    plt.plot(fpr, tpr)
+    plt.plot([0, 1], [0, 1], 'k--') # diagonal line
+    plt.xlabel('False positive rate')
+    plt.ylabel('True positive rate')
+    plt.title('ROC curve (AUROC = {:.3f})'.format(auroc))
+
+    plt.savefig(f'{model_name}_roc_curve.jpg') # save the plot as a JPG file
+
+    plt.show()
     results_path = os.path.join('gpt_text_detector/results', f'{model_name}_evaluation_results.txt')
     with open(results_path, 'w') as f:
         f.write(f'Loss: {loss:.4f}\n')

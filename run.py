@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 from torch.optim import Adam
 import transformers
-
+import matplotlib.pyplot as plt
 from train import train, validate, RobertaWrapper
 from eval import evaluate_model
 from stat_extractor import StatFeatureExtractor
@@ -17,6 +17,7 @@ if __name__ == '__main__':
 
     parser.add_argument('--train', '-t', action='store_true')
     parser.add_argument('--validate', '-v', action='store_true')
+    parser.add_argument('--test', action='store_true')
     parser.add_argument('--baseline', '-b', action='store_true', help='run baseline ONLY')
 
     parser.add_argument('--large', '-l', action='store_true', help='use the roberta-large model instead of roberta-base')
@@ -104,5 +105,29 @@ if __name__ == '__main__':
                 )
 
     # TODO: Actually test model and get results
-    elif args.eval:
-        evaluate_model(model, val_loader, nn.BCELoss, args.device)
+    elif args.test:
+        checkpoint = torch.load(os.path.join(logdir, "best-model.pt"))
+        model_state_dict = checkpoint['model_state_dict']
+        model.load_state_dict(model_state_dict)
+        loss, accuracy, auroc, fpr, tpr = evaluate_model(model, val_loader, nn.BCELoss, args.device)
+        plt.plot(fpr, tpr)
+        plt.plot([0, 1], [0, 1], 'k--') # diagonal line
+        plt.xlabel('False positive rate')
+        plt.ylabel('True positive rate')
+        plt.title('ROC curve (AUROC = {:.3f})'.format(auroc))
+
+        model_name = ""
+        if args.baseline:
+            model_name = "baseline"
+        elif args.early_fusion:
+            model_name = "early_fusion"
+        else:
+            model_name = "late_fusion"
+        plt.savefig(f'{model_name}_roc_curve.jpg') # save the plot as a JPG file
+
+        plt.show()
+        results_path = os.path.join('gpt_text_detector/results', f'{model_name}_evaluation_results.txt')
+        with open(results_path, 'w') as f:
+            f.write(f'Loss: {loss:.4f}\n')
+            f.write(f'Accuracy: {accuracy:.4f}\n')
+            f.write(f'AUC: {auroc:.4f}\n')      
