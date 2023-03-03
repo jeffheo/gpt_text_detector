@@ -1,15 +1,6 @@
-import os
-import numpy as np
 import torch
-from sklearn.metrics import roc_auc_score, roc_curve, auc
-import matplotlib.pyplot as plt
+from sklearn.metrics import roc_curve, auc, accuracy_score
 from tqdm import tqdm
-import argparse 
-from dataset import load_datasets
-from train import RobertaWrapper
-import transformers
-
-from stat_extractor import StatFeatureExtractor
 
 
 def compute_auroc(labels, scores):
@@ -18,15 +9,17 @@ def compute_auroc(labels, scores):
     return fpr.tolist(), tpr.tolist(), float(roc_auc)
 
 
-def evaluate_model(model, test_loader, criterion, device):
-    model.eval()  # Set the model to evaluation mode
+def evaluate_model(model, test_loader, device):
+
+    checkpoint = 1
+
+    model.eval()
+
     test_loss = 0
-    # correct = 0
-    # y_true = []
-    # y_pred = []
+    label_lst = []
+    score_lst = []
+    pred_lst = []
     with torch.no_grad(), tqdm(total=len(test_loader)) as progress_bar:
-        label_lst = []
-        score_lst = []
         for input_ids, masks, labels, stats in test_loader:
             label_lst.extend(labels)
             input_ids, masks, labels, stats = input_ids.to(device), masks.to(device), labels.to(device), stats.to(
@@ -35,107 +28,30 @@ def evaluate_model(model, test_loader, criterion, device):
             stat_embeds = None
             if not model.is_baseline:
                 stat_embeds = model.stat_embeddings(stats)
-                if model.early_fusion:
-                    input_embeds += stat_embeds
+                if model.is_early_fusion:
+                    input_embeds += stat_embeds[:, None, :]
             loss, logits = model(inputs_embeds=input_embeds, attention_mask=masks, labels=labels,
                                  stat_embeds=stat_embeds, return_dict=False)
+
             test_loss += loss
-            score_lst.extend(logits.softmax(-1)[:, 0].tolist())
-            # pred = logits.argmax(dim=1, keepdim=True)
-            # logits = logits.detach().numpy()
-            # y_true.extend(labels.numpy())
-            # y_pred.extend(logits)  # Use the predicted probabilities for the positive class
+            p = logits.softmax(-1)
+            pred_lst.extend(torch.argmax(p, dim=1).tolist())
+            score_lst.extend(p[:, 0].tolist())  # probability of predicting label=0
+
+            if checkpoint % 100 == 0:
+                print(f'\n\n===================CHECKPOINT {checkpoint}===================\n'
+                      f'(test set) Accuracy: {accuracy_score(label_lst, pred_lst):.4f}'
+                      f'\n=========================END=========================*\n')
+            checkpoint += 1
             progress_bar.update(1)  # Update the tqdm progress bar
-    #
-    # y_true = np.array(y_true)
-    # y_pred = np.array(y_pred)
+
+    accuracy = accuracy_score(label_lst, pred_lst)
     fpr, tpr, auroc = compute_auroc(label_lst, score_lst)
     test_loss /= len(test_loader.dataset)
-    # accuracy = 100. * correct / len(test_loader.dataset)
-    print(f'Test set: Average loss: {test_loss:.4f}')
-    
-    # auroc = roc_auc_score(y_true, y_pred)
-    print(f'Test set: AUROC score: {auroc:.4f}')
-    # fpr, tpr, _ = roc_curve(y_true, y_pred)
+    print(f'\n***********************FINALE****************************\n'
+          f'(test set) Accuracy: {accuracy:.4f}\n'
+          f'(test set) Average Loss: {test_loss:.4f}\n'
+          f'(test set) AUROC Score: {auroc:.4f}\n'
+          f'\n***************************************************\n')
 
-    return test_loss, auroc, fpr, tpr
-
-
-# if __name__ == '__main__':
-#     parser = argparse.ArgumentParser()
-#     parser.add_argument('--device', type=str, default="cuda" if torch.cuda.is_available() else "cpu")
-#     parser.add_argument('--large', action='store_true', help='use the roberta-large model instead of roberta-base')
-#     parser.add_argument('--max-epochs', type=int, default=None)
-#     parser.add_argument('--batch_size', type=int, default=32)
-#     parser.add_argument('--max-sequence-length', type=int, default=128)
-#     parser.add_argument('--random-sequence-length', action='store_true')
-#     parser.add_argument('--epoch-size', type=int, default=None)
-#     parser.add_argument('--seed', type=int, default=None)
-#     parser.add_argument('--data-dir', type=str, default='data')
-#     parser.add_argument('--real-dataset', type=str, default='real')
-#     parser.add_argument('--fake-dataset', type=str, default='fake')
-#     parser.add_argument('--token-dropout', type=float, default=None)
-#     parser.add_argument('--early_fusion', action ="store_true")
-#     parser.add_argument('--baseline', action ="store_true")
-#
-#     parser.add_argument('--learning-rate', type=float, default=2e-5)
-#     parser.add_argument('--weight-decay', type=float, default=0)
-#     parser.add_argument('--no_freeze', action='store_true')
-#
-#     parser.add_argument('--all', '-a', action="store_true")
-#     parser.add_argument('--zipf', '-z', action="store_true")
-#     parser.add_argument('--clumpiness', '-l', action="store_true")
-#     parser.add_argument('--punctuation', '-p', action="store_true")
-#     parser.add_argument('--coreference', '-c', action="store_true")
-#     parser.add_argument('--creativity', '-r', action="store_true")
-#
-#     parser.add_argument('--baseline_only', action='store_true')  # run baseline ONLY, default False
-#
-#     args = parser.parse_args()
-#
-#     d = {
-#         'zipf': args.all or args.zipf,
-#         'clumpiness': args.all or args.clumpiness,
-#         'punctuation': args.all or args.punctuation,
-#         'coreference': args.all or args.coreference,
-#         'creativity': args.all or args.creativity,
-#     }
-#
-#     args.stat_extractor = StatFeatureExtractor(d)
-#     stat_size = args.stat_extractor.stat_vec_size
-#
-#     name = f'roberta-{"large" if args.large else "base"}-openai-detector'
-#     tokenizer = transformers.RobertaTokenizer.from_pretrained(name)
-#     args.tokenizer = tokenizer
-#
-#     model_name = ""
-#     if args.baseline:
-#         model_name = "baseline"
-#     elif args.early_fusion:
-#         model_name = "early_fusion"
-#     else:
-#         model_name = "late_fusion"
-#
-#     _roberta = transformers.RobertaForSequenceClassification.from_pretrained(name)
-#     _model = RobertaWrapper(_roberta, stat_size, args.baseline, args.early_fusion)
-#
-#     params_path = os.path.join('gpt_text_detector/params', f'{model_name}_parameters.pth')
-#     _model.load_state_dict(torch.load(params_path))
-#
-#     _, _loader = load_datasets(**vars(args))
-#
-#     loss, accuracy, auroc, fpr, tpr = evaluate_model(_model, _loader, torch.nn.BCELoss, args.device)
-#     plt.plot(fpr, tpr)
-#     plt.plot([0, 1], [0, 1], 'k--') # diagonal line
-#     plt.xlabel('False positive rate')
-#     plt.ylabel('True positive rate')
-#     plt.title('ROC curve (AUROC = {:.3f})'.format(auroc))
-#
-#     plt.savefig(f'{model_name}_roc_curve.jpg') # save the plot as a JPG file
-#
-#     plt.show()
-#     results_path = os.path.join('gpt_text_detector/results', f'{model_name}_evaluation_results.txt')
-#     with open(results_path, 'w') as f:
-#         f.write(f'Loss: {loss:.4f}\n')
-#         f.write(f'Accuracy: {accuracy:.4f}\n')
-#         f.write(f'AUC: {auroc:.4f}\n')
+    return test_loss, auroc, fpr, tpr, accuracy

@@ -1,14 +1,13 @@
 import os
 import argparse
 import torch
-import torch.nn as nn
 from torch.optim import Adam
 import transformers
 import matplotlib.pyplot as plt
 from train import train, validate, RobertaWrapper
 from eval import evaluate_model
 from stat_extractor import StatFeatureExtractor
-from dataset import load_datasets
+from dataset2 import load_datasets
 
 logdir = "logs"
 
@@ -23,7 +22,7 @@ if __name__ == '__main__':
     parser.add_argument('--large', '-l', action='store_true', help='use the roberta-large model instead of roberta-base')
     parser.add_argument('--device', type=str, default="cuda" if torch.cuda.is_available() else "cpu")
 
-    parser.add_argument('--max-epochs', type=int, default=10)
+    parser.add_argument('--max-epochs', type=int, default=5)
     parser.add_argument('--batch-size', type=int, default=24)
     parser.add_argument('--max-sequence-length', type=int, default=128)
     parser.add_argument('--random-sequence-length', action='store_true')
@@ -84,17 +83,21 @@ if __name__ == '__main__':
         for epoch in range(1, max_epochs + 1):
             train_results = train(model, optimizer, train_loader, args.device, f'EPOCH {epoch}')
             validation_results = validate(model, val_loader, args.device)
-            train_results["accuracy"] /= train_results["epoch_size"]
-            train_results["loss"] /= train_results["loss"]
-            validation_results["accuracy"] /= validation_results["epoch_size"]
-            validation_results["loss"] /= validation_results["loss"]
+            train_results["train/accuracy"] /= train_results["train/epoch_size"]
+            train_results["train/loss"] /= train_results["train/epoch_size"]
+
+            validation_results["val/accuracy"] /= validation_results["val/epoch_size"]
+            validation_results["val/loss"] /= validation_results["val/epoch_size"]
 
             for key in train_results:
-                writer.add_scalar(key, train_results[key], global_step=epoch)
-                writer.add_scalar(key, validation_results[key], global_step=epoch)
+                key = key.split('/')[1]
+                train_key = f'train/{key}'
+                val_key = f'val/{key}'
+                writer.add_scalar(train_key, train_results[train_key], global_step=epoch)
+                writer.add_scalar(val_key, validation_results[val_key], global_step=epoch)
 
-            if validation_results["accuracy"] > best_validation_accuracy:
-                best_validation_accuracy = validation_results["accuracy"]
+            if validation_results["val/accuracy"] > best_validation_accuracy:
+                best_validation_accuracy = validation_results["val/accuracy"]
                 print("New Best Validation Accuracy: {:.4f}".format(best_validation_accuracy))
                 model_to_save = model.module if hasattr(model, 'module') else model
                 # Checkpoint best model
@@ -104,21 +107,21 @@ if __name__ == '__main__':
                         optimizer_state_dict=optimizer.state_dict(),
                         args=args
                     ),
-                    os.path.join(logdir, "best-model.pt")
+                    os.path.join(logdir, f"best-model-{'baseline' if args.baseline else 'main'}.pt")
                 )
 
-    # TODO: Actually test model and get results
     elif args.test:
         # load model from checkpoint if it is main model, or if we're using fine-tuned baseline
         if not args.baseline or args.from_checkpoint:
-            data = torch.load(os.path.join(logdir, "best-model.pt"))
+            data = torch.load(os.path.join(logdir, f"best-model-{'baseline' if args.baseline else 'main'}.pt"))
             model.load_state_dict(data["model_state_dict"])
 
-        loss, auroc, fpr, tpr = evaluate_model(model, test_loader, nn.BCELoss, args.device)
+        loss, auroc, fpr, tpr, accuracy = evaluate_model(model, test_loader, args.device)
+
         plt.plot(fpr, tpr)
         plt.plot([0, 1], [0, 1], 'k--')  # diagonal line
-        plt.xlabel('False positive rate')
-        plt.ylabel('True positive rate')
+        plt.xlabel('False Positive Rate')
+        plt.ylabel('True Positive Rate')
         plt.title('ROC curve (AUROC = {:.3f})'.format(auroc))
 
         model_name = ""
@@ -133,5 +136,5 @@ if __name__ == '__main__':
         results_path = os.path.join('results', f'{model_name}_evaluation_results.txt')
         with open(results_path, 'w+') as f:
             f.write(f'Loss: {loss:.4f}\n')
-            # f.write(f'Accuracy: {accuracy:.4f}\n')
+            f.write(f'Accuracy: {accuracy:.4f}\n')
             f.write(f'AUC: {auroc:.4f}\n')
