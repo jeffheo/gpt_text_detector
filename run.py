@@ -8,18 +8,26 @@ from train import train, validate, RobertaWrapper
 from eval import evaluate_model
 from stat_extractor import StatFeatureExtractor
 from dataset2 import load_datasets
+from torchinfo import summary
+import numpy as np
+import datetime
+import time
+import json
 
-logdir = "logs"
+checkpoint = "mdl"
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
+
+    parser.add_argument('--inspect', '-i', action='store_true')
 
     parser.add_argument('--train', '-t', action='store_true')
     parser.add_argument('--test', '-e', action='store_true')
     parser.add_argument('--baseline', '-b', action='store_true', help='run baseline ONLY')
     parser.add_argument('--from-checkpoint', action='store_true', help='load model from checkpoint')
 
-    parser.add_argument('--large', '-l', action='store_true', help='use the roberta-large model instead of roberta-base')
+    parser.add_argument('--large', '-l', action='store_true',
+                        help='use the roberta-large model instead of roberta-base')
     parser.add_argument('--device', type=str, default="cuda" if torch.cuda.is_available() else "cpu")
 
     parser.add_argument('--max-epochs', type=int, default=5)
@@ -67,34 +75,76 @@ if __name__ == '__main__':
             # if fine-tuning pre-trained roberta, unfreeze
             unfreeze = True
 
+    model_type = ''
+    if args.baseline:
+        if args.from_checkpoint:
+            model_type = "Baseline_Finetuned"
+        else:
+            model_type = "Baseline_Pretrained"
+    else:
+        if args.early_fusion:
+            model_type = "Main_Early_Fusion"
+        else:
+            model_type = "Main_Late_Fusion"
+
     model = RobertaWrapper(base, stat_size, unfreeze, args.baseline, args.early_fusion).to(args.device)
+
+    if args.inspect:
+        print(f'\n\n==================================================\n\n'
+              f'            Inspecting {model_type} Model...'
+              f'\n\n==================================================\n\n')
+        summary(model)
+
     optimizer = Adam(model.parameters(), lr=args.learning_rate, weight_decay=args.weight_decay)
     train_loader, val_loader, test_loader = load_datasets(**vars(args))
 
-    if args.train:
-        print(f'Training {"BASE" if args.baseline else "MAIN"} Model...')
-        os.makedirs(logdir, exist_ok=True)
+    # Once loaders are set, delete non-serializable items from args
+    # TODO: probably not the most elegant solution
+    del args.__dict__['tokenizer']
+    if args.__dict__.get('stat_extractor'):
+        del args.__dict__['stat_extractor']
 
-        from torch.utils.tensorboard import SummaryWriter
-        writer = SummaryWriter(logdir)
+    START_DATE = datetime.datetime.now().strftime('%Y-%m-%d')
+    START_TIME = datetime.datetime.now().strftime('%H-%M-%S-%f')
+
+    if args.train:
+        print(f'\n\n==================================================\n\n'
+              f'            Begin Training {model_type} Model...'
+              f'\n\n==================================================\n\n')
+        RESULTS_PATH = f'train_results/{model_type}/{START_DATE}-{START_TIME}'
+        os.makedirs(RESULTS_PATH, exist_ok=True)
+        os.makedirs(checkpoint, exist_ok=True)
+
+        with open(os.path.join(RESULTS_PATH, 'args.json'), 'w+') as f:
+            json.dump(args.__dict__, f, indent=4)
 
         best_validation_accuracy = 0
         max_epochs = args.max_epochs or 1
+
+        combined_results = {
+            'train/accuracy': [0] * max_epochs,
+            'train/loss': [0] * max_epochs,
+            'val/accuracy': [0] * max_epochs,
+            'val/loss': [0] * max_epochs,
+            'time': [0] * max_epochs,
+        }
+
         for epoch in range(1, max_epochs + 1):
-            train_results = train(model, optimizer, train_loader, args.device, f'EPOCH {epoch}')
+            start = time.time()
+
+            train_results = train(model, optimizer, train_loader, args.device, f'TRAINING EPOCH {epoch}...')
             validation_results = validate(model, val_loader, args.device)
             train_results["train/accuracy"] /= train_results["train/epoch_size"]
             train_results["train/loss"] /= train_results["train/epoch_size"]
-
             validation_results["val/accuracy"] /= validation_results["val/epoch_size"]
             validation_results["val/loss"] /= validation_results["val/epoch_size"]
 
-            for key in train_results:
-                key = key.split('/')[1]
-                train_key = f'train/{key}'
-                val_key = f'val/{key}'
-                writer.add_scalar(train_key, train_results[train_key], global_step=epoch)
-                writer.add_scalar(val_key, validation_results[val_key], global_step=epoch)
+            for k in train_results:
+                k = k.split('/')[1]
+                if k == "epoch_size":
+                    continue
+                combined_results[f'train/{k}'][epoch - 1] = train_results[f'train/{k}']
+                combined_results[f'val/{k}'][epoch - 1] = validation_results[f'val/{k}']
 
             if validation_results["val/accuracy"] > best_validation_accuracy:
                 best_validation_accuracy = validation_results["val/accuracy"]
@@ -102,21 +152,79 @@ if __name__ == '__main__':
                 model_to_save = model.module if hasattr(model, 'module') else model
                 # Checkpoint best model
                 torch.save(dict(
-                        epoch=epoch,
-                        model_state_dict=model_to_save.state_dict(),
-                        optimizer_state_dict=optimizer.state_dict(),
-                        args=args
-                    ),
-                    os.path.join(logdir, f"best-model-{'baseline' if args.baseline else 'main'}.pt")
+                    epoch=epoch,
+                    model_state_dict=model_to_save.state_dict(),
+                    optimizer_state_dict=optimizer.state_dict(),
+                    args=args
+                ),
+                    os.path.join(checkpoint, f"{model_type}.pt")
                 )
 
+            end = time.time()
+            print(f'\nFINISHED EPOCH {epoch} IN {end - start:.2f}s\n')
+            combined_results['time'][epoch - 1] = end - start
+
+        combined_results['total_runtime'] = sum([combined_results['time'][i] for i in range(max_epochs)])
+        combined_results['avg_time_per_epoch'] = combined_results['total_runtime'] / max_epochs
+
+        with open(os.path.join(RESULTS_PATH, 'train_results.json'), 'w+') as f:
+            json.dump(combined_results, f, indent=4)
+
+        epochs = np.arange(1, max_epochs + 1)
+        (p1,) = plt.plot(epochs, combined_results['train/accuracy'], color='r')
+        (p2,) = plt.plot(epochs, combined_results['val/accuracy'], color='b')
+        plt.xticks(np.arange(0, max_epochs + 1))
+        plt.title("Training and Validation Accuracy")
+        plt.xlabel("epoch")
+        plt.ylabel("accuracy")
+
+        plt.legend([p1, p2], ["train", "val"])
+        plt.savefig(os.path.join(RESULTS_PATH, 'train_val_accuracy.jpg'))
+        plt.close()
+
+        plt.clf()
+
+        (p1,) = plt.plot(epochs, combined_results['train/loss'], color='r')
+        (p2,) = plt.plot(epochs, combined_results['val/loss'], color='b')
+        plt.xticks(np.arange(0, max_epochs + 1))
+        plt.title("Training and Validation Loss")
+        plt.xlabel("epoch")
+        plt.ylabel("loss")
+
+        plt.legend([p1, p2], ["train", "val"])
+        plt.savefig(os.path.join(RESULTS_PATH, 'train_val_loss.jpg'))
+        plt.close()
+        plt.clf()
+
     elif args.test:
+        print(f'\n\n==================================================\n\n'
+              f'            Begin Testing {model_type} Model...'
+              f'\n\n==================================================\n\n')
         # load model from checkpoint if it is main model, or if we're using fine-tuned baseline
         if not args.baseline or args.from_checkpoint:
-            data = torch.load(os.path.join(logdir, f"best-model-{'baseline' if args.baseline else 'main'}.pt"))
+            data = torch.load(os.path.join(checkpoint, f"{model_type}.pt"))
             model.load_state_dict(data["model_state_dict"])
 
+        RESULTS_PATH = f'test_results/{model_type}/{START_DATE}-{START_TIME}'
+        os.makedirs(RESULTS_PATH, exist_ok=True)
+
+        with open(os.path.join(RESULTS_PATH, 'args.json'), 'w+') as f:
+            json.dump(args.__dict__, f, indent=4)
+
+        start = time.time()
         loss, auroc, fpr, tpr, accuracy = evaluate_model(model, test_loader, args.device)
+        end = time.time()
+        print(f'\nFINISHED TESTING IN {end - start:.2f}s\n')
+
+        test_results = {
+            "loss": loss,
+            "auroc": auroc,
+            "accuracy": accuracy,
+            "total_runtime": end - start
+        }
+
+        with open(os.path.join(RESULTS_PATH, 'results.json'), 'w+') as f:
+            json.dump(test_results, f, indent=4)
 
         plt.plot(fpr, tpr)
         plt.plot([0, 1], [0, 1], 'k--')  # diagonal line
@@ -124,17 +232,6 @@ if __name__ == '__main__':
         plt.ylabel('True Positive Rate')
         plt.title('ROC curve (AUROC = {:.3f})'.format(auroc))
 
-        model_name = ""
-        if args.baseline:
-            model_name = "baseline"
-        elif args.early_fusion:
-            model_name = "early_fusion"
-        else:
-            model_name = "late_fusion"
-        plt.savefig(f'{model_name}_roc_curve.jpg')  # save the plot as a JPG file
-        os.makedirs('results', exist_ok=True)
-        results_path = os.path.join('results', f'{model_name}_evaluation_results.txt')
-        with open(results_path, 'w+') as f:
-            f.write(f'Loss: {loss:.4f}\n')
-            f.write(f'Accuracy: {accuracy:.4f}\n')
-            f.write(f'AUC: {auroc:.4f}\n')
+        plt.savefig(os.path.join(RESULTS_PATH, 'roc_curve.jpg'))  # save the plot as a JPG file
+        plt.close()
+        plt.clf()
