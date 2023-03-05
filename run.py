@@ -77,7 +77,7 @@ if __name__ == '__main__':
 
     model_type = ''
     if args.baseline:
-        if args.from_checkpoint:
+        if args.train or args.from_checkpoint:
             model_type = "Baseline_Finetuned"
         else:
             model_type = "Baseline_Pretrained"
