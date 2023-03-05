@@ -9,6 +9,7 @@ $ conda activate cs224n_project
 ```
 
 ## Running
+tbd
 ### Test Baseline
 ```shell
 python run.py --test --baseline
