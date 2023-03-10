@@ -33,15 +33,16 @@ def evaluate_model(model, test_loader, device):
             loss, logits = model(inputs_embeds=input_embeds, attention_mask=masks, labels=labels,
                                  stat_embeds=stat_embeds, return_dict=False)
 
-            test_loss += loss
+            test_loss += loss.item()
             p = logits.softmax(-1)
             pred_lst.extend(torch.argmax(p, dim=1).tolist())
-            score_lst.extend(p[:, 0].tolist())  # probability of predicting label=0
+            score_lst.extend(p[:, 1].tolist())  # probability of predicting label=1 (positive)
 
             if checkpoint % 100 == 0:
                 print(f'\n\n===================CHECKPOINT {checkpoint}===================\n'
-                      f'(test set) Accuracy: {accuracy_score(label_lst, pred_lst):.4f}'
-                      f'\n=========================END=========================*\n')
+                      f'(test set) Accuracy: {accuracy_score(label_lst, pred_lst):.4f}\n'
+                      f'(test set) AUROC: {compute_auroc(label_lst, score_lst)[2]:.4f}'
+                      f'\n=========================END=========================\n')
             checkpoint += 1
             progress_bar.update(1)  # Update the tqdm progress bar
 
