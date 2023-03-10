@@ -25,12 +25,13 @@ class EncodedDataset(Dataset):
     """
 
     def __init__(self, real_texts: List[str], fake_texts: List[str], tokenizer: PreTrainedTokenizer,
-                 stat_extractor=None, max_sequence_length: int = None, min_sequence_length: int = None,
+                 stat_extractor=None, rank_extractor=None, max_sequence_length: int = None, min_sequence_length: int = None,
                  epoch_size: int = None, token_dropout: float = None, seed: int = None, **kwargs):
         self.real_texts = real_texts
         self.fake_texts = fake_texts
         self.tokenizer = tokenizer
         self.stat_extractor = stat_extractor
+        self.rank_extractor = rank_extractor
         self.max_sequence_length = max_sequence_length
         self.min_sequence_length = min_sequence_length
         self.epoch_size = epoch_size
@@ -55,13 +56,38 @@ class EncodedDataset(Dataset):
 
         # This will throw truncation warning, but truncation is explicitly handled below, so should be fine i think...?
         tokens = self.tokenizer.encode(text)
+        print(len(tokens))
         stat_vec = torch.zeros(1)
         if self.stat_extractor:
             stat_vec = self.stat_extractor.encode(text)
             stat_vec = torch.tensor(stat_vec).float()
+        
+        #TODO implement this
+        rank_vec = torch.zeros(1)
+        if self.rank_extractor: 
+            rank_vec = []
+            payload = self.rank_extractor.check_probabilities(text)
+            real_ranks = payload['real_topk'] #list of ranks 
+            for rank in real_ranks:
+                index = 5
+                if rank <= 10:
+                    index = 0
+                elif rank <= 100:
+                    index = 1
+                elif rank <= 500:
+                    index = 2
+                elif rank <= 1000: 
+                    index = 3
+                elif rank <= 5000:
+                    index = 4
+                rank_vec.append(index)
+            
+            rank_vec = torch.tensor(rank_vec).long()
+            print(rank_vec.size())
 
         if self.max_sequence_length is None:
             tokens = tokens[:self.tokenizer.model_max_length - 2]
+
         else:
             output_length = min(len(tokens), self.max_sequence_length)
             if self.min_sequence_length:
@@ -80,36 +106,36 @@ class EncodedDataset(Dataset):
             mask = torch.ones(len(tokens) + 2)
 
             return torch.tensor(
-                [self.tokenizer.bos_token_id] + tokens + [self.tokenizer.eos_token_id]), mask, label, stat_vec
+                [self.tokenizer.bos_token_id] + tokens + [self.tokenizer.eos_token_id]), mask, label, stat_vec, rank_vec
 
         padding = [self.tokenizer.pad_token_id] * (self.max_sequence_length - len(tokens))
         tokens = torch.tensor([self.tokenizer.bos_token_id] + tokens + [self.tokenizer.eos_token_id] + padding)
         mask = torch.ones(tokens.shape[0])
         mask[-len(padding):] = 0
-        return tokens, mask, label, stat_vec
+        return tokens, mask, label, stat_vec, rank_vec
 
 
 def load_datasets(tokenizer, batch_size, max_sequence_length, random_sequence_length,
-                  stat_extractor=None, epoch_size=None, token_dropout=None, seed=None, num_workers=0, **kwargs) -> \
+                  stat_extractor=None, rank_extractor=None, epoch_size=None, token_dropout=None, seed=None, num_workers=0, **kwargs) -> \
         Tuple[DataLoader, DataLoader, DataLoader]:
 
     Sampler = DistributedSampler if dist.is_available() and dist.is_initialized() and dist.get_world_size() > 1 else RandomSampler
 
     min_sequence_length = 10 if random_sequence_length else None
-    train_dataset = EncodedDataset(train_real, train_fake, tokenizer, stat_extractor, max_sequence_length,
+    train_dataset = EncodedDataset(train_real, train_fake, tokenizer, stat_extractor, rank_extractor, max_sequence_length,
                                    min_sequence_length,
                                    epoch_size, token_dropout, seed)
 
     train_loader = DataLoader(train_dataset, batch_size, sampler=Sampler(train_dataset), num_workers=num_workers)
 
-    validation_dataset = EncodedDataset(val_real, val_fake, tokenizer, stat_extractor, max_sequence_length,
+    validation_dataset = EncodedDataset(val_real, val_fake, tokenizer, stat_extractor, rank_extractor, max_sequence_length,
                                         min_sequence_length,
                                         epoch_size, token_dropout, seed)
 
     validation_loader = DataLoader(validation_dataset, batch_size, sampler=Sampler(validation_dataset))
 
     # exactly the same as other datasets, but set dropout explicitly to None
-    test_dataset = EncodedDataset(test_real, test_fake, tokenizer, stat_extractor, max_sequence_length,
+    test_dataset = EncodedDataset(test_real, test_fake, tokenizer, stat_extractor, rank_extractor, max_sequence_length,
                                   min_sequence_length, epoch_size, token_dropout=None, seed=seed)
 
     test_loader = DataLoader(test_dataset, batch_size, sampler=Sampler(test_dataset))

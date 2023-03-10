@@ -7,6 +7,7 @@ import matplotlib.pyplot as plt
 from train import train, validate, RobertaWrapper
 from eval import evaluate_model
 from stat_extractor import StatFeatureExtractor
+from rank_extractor import LM
 from dataset2 import load_datasets
 
 logdir = "logs"
@@ -37,6 +38,7 @@ if __name__ == '__main__':
 
     # model hyper-parameters
     parser.add_argument('--early-fusion', action="store_true")
+    parser.add_argument('--rank-embedding', action="store_true")
     # TODO: late-fusion
     parser.add_argument('--unfreeze', action="store_true", help="unfreeze base RobertaForSequenceClassifier")
     parser.add_argument('--use-all-stats', action="store_true")
@@ -67,7 +69,9 @@ if __name__ == '__main__':
             # if fine-tuning pre-trained roberta, unfreeze
             unfreeze = True
 
-    model = RobertaWrapper(base, stat_size, unfreeze, args.baseline, args.early_fusion).to(args.device)
+    #rank extractor section added by Jeff
+    args.rank_extractor = LM()
+    model = RobertaWrapper(base, stat_size, unfreeze, args.baseline, args.early_fusion, args.rank_embedding).to(args.device)
     optimizer = Adam(model.parameters(), lr=args.learning_rate, weight_decay=args.weight_decay)
     train_loader, val_loader, test_loader = load_datasets(**vars(args))
 
