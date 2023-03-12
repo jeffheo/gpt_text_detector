@@ -13,7 +13,8 @@ class RobertaWrapper(nn.Module):
     forward() is same as RobertaForSequenceClassification
     """
 
-    def __init__(self, roberta_seq_classifier, stat_vec_size, unfreeze, baseline, early_fusion, rank_embedding):
+    def __init__(self, roberta_seq_classifier, stat_vec_size, unfreeze, baseline,
+                 early_fusion=True, rank_embedding=False):
         super(RobertaWrapper, self).__init__()
         # W: R^{stat_vec_size} --> R^{hidden_size}
         self.linear = None
@@ -123,10 +124,9 @@ def train(model: nn.Module, optimizer, loader, device, desc='Training'):
 
             if not model.is_baseline:
                 stat_embeds = model.stat_embeddings(stats)
-
                 if model.is_early_fusion:
-                    # TODO: we need to fix the dimensions
                     input_embeds += stat_embeds[:, None, :]
+
             #TODO: add rank embeddings
             if model.is_rank_embedding:
                 rank_embeds = model.rank_embeddings(ranks)

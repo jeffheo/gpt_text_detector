@@ -43,6 +43,7 @@ if __name__ == '__main__':
     parser.add_argument('--token-dropout', type=float, default=None)
     parser.add_argument('--learning-rate', type=float, default=2e-5)
     parser.add_argument('--weight-decay', type=float, default=0)
+    parser.add_argument('--datatype', type=str, default='wiki_intro')
 
     # model hyper-parameters
     parser.add_argument('--early-fusion', action="store_true")
@@ -78,7 +79,9 @@ if __name__ == '__main__':
             unfreeze = True
 
     #rank extractor section added by Jeff
-    args.rank_extractor = LM()
+    if args.rank_embedding:
+        args.rank_extractor = LM()
+
     model = RobertaWrapper(base, stat_size, unfreeze, args.baseline, args.early_fusion, args.rank_embedding).to(args.device)
     model_type = ''
     if args.baseline:
@@ -92,8 +95,6 @@ if __name__ == '__main__':
         else:
             model_type = "Main_Late_Fusion"
 
-    model = RobertaWrapper(base, stat_size, unfreeze, args.baseline, args.early_fusion).to(args.device)
-
     if args.inspect:
         print(f'\n\n==================================================\n\n'
               f'            Inspecting {model_type} Model...'
@@ -101,6 +102,8 @@ if __name__ == '__main__':
         summary(model)
 
     optimizer = Adam(model.parameters(), lr=args.learning_rate, weight_decay=args.weight_decay)
+
+    # TODO: Clean up code
     train_loader, val_loader, test_loader = load_datasets(**vars(args))
 
     # Once loaders are set, delete non-serializable items from args
@@ -108,6 +111,8 @@ if __name__ == '__main__':
     del args.__dict__['tokenizer']
     if args.__dict__.get('stat_extractor'):
         del args.__dict__['stat_extractor']
+    if args.__dict__.get('rank_extractor'):
+        del args.__dict__['rank_extractor']
 
     START_DATE = datetime.datetime.now().strftime('%Y-%m-%d')
     START_TIME = datetime.datetime.now().strftime('%H-%M-%S-%f')
