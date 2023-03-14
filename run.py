@@ -7,15 +7,14 @@ import matplotlib.pyplot as plt
 from train import train, validate, RobertaWrapper
 from eval import evaluate_model
 from stat_extractor import StatFeatureExtractor
-from rank_extractor import LM
-from dataset2 import load_datasets
+from dataset import load_datasets
 from torchinfo import summary
 import numpy as np
 import datetime
 import time
 import json
 
-checkpoint = "mdl"
+checkpoint_dir = "mdl"
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -47,16 +46,17 @@ if __name__ == '__main__':
 
     # model hyper-parameters
     parser.add_argument('--early-fusion', action="store_true")
-    parser.add_argument('--rank-embedding', action="store_true")
     # TODO: late-fusion
     parser.add_argument('--unfreeze', action="store_true", help="unfreeze base RobertaForSequenceClassifier")
     parser.add_argument('--use-all-stats', action="store_true")
 
     # stat feature parameters
-    # TODO: add more
     parser.add_argument('--zipf', '-z', action="store_true")
     parser.add_argument('--clumpiness', '-c', action="store_true")
     parser.add_argument('--punctuation', '-p', action="store_true")
+    parser.add_argument('--burstiness', action="store_true")
+    parser.add_argument('--kurt', action="store_true")
+    parser.add_argument('--stopword-ratio', action='store_true')
     args = parser.parse_args()
 
     name = f'roberta-{"large" if args.large else "base"}-openai-detector'
@@ -71,6 +71,9 @@ if __name__ == '__main__':
             'zipf': args.use_all_stats or args.zipf,
             'clumpiness': args.use_all_stats or args.clumpiness,
             'punctuation': args.use_all_stats or args.punctuation,
+            'burstiness': args.use_all_stats or args.burstiness,
+            'kurt': args.use_all_stats or args.kurt,
+            'stopword_ratio': args.use_all_stats or args.stopword_ratio
         })
         stat_size = args.stat_extractor.stat_vec_size
     else:
@@ -78,11 +81,7 @@ if __name__ == '__main__':
             # if fine-tuning pre-trained roberta, unfreeze
             unfreeze = True
 
-    #rank extractor section added by Jeff
-    if args.rank_embedding:
-        args.rank_extractor = LM()
-
-    model = RobertaWrapper(base, stat_size, unfreeze, args.baseline, args.early_fusion, args.rank_embedding).to(args.device)
+    model = RobertaWrapper(base, stat_size, unfreeze, args.baseline, args.early_fusion).to(args.device)
     model_type = ''
     if args.baseline:
         if args.train or args.from_checkpoint:
@@ -103,16 +102,12 @@ if __name__ == '__main__':
 
     optimizer = Adam(model.parameters(), lr=args.learning_rate, weight_decay=args.weight_decay)
 
-    # TODO: Clean up code
     train_loader, val_loader, test_loader = load_datasets(**vars(args))
 
     # Once loaders are set, delete non-serializable items from args
-    # TODO: probably not the most elegant solution
     del args.__dict__['tokenizer']
     if args.__dict__.get('stat_extractor'):
         del args.__dict__['stat_extractor']
-    if args.__dict__.get('rank_extractor'):
-        del args.__dict__['rank_extractor']
 
     START_DATE = datetime.datetime.now().strftime('%Y-%m-%d')
     START_TIME = datetime.datetime.now().strftime('%H-%M-%S-%f')
@@ -123,7 +118,7 @@ if __name__ == '__main__':
               f'\n\n==================================================\n\n')
         RESULTS_PATH = f'train_results/{model_type}/{START_DATE}-{START_TIME}'
         os.makedirs(RESULTS_PATH, exist_ok=True)
-        os.makedirs(checkpoint, exist_ok=True)
+        os.makedirs(checkpoint_dir, exist_ok=True)
 
         with open(os.path.join(RESULTS_PATH, 'args.json'), 'w+') as f:
             json.dump(args.__dict__, f, indent=4)
@@ -167,7 +162,7 @@ if __name__ == '__main__':
                     optimizer_state_dict=optimizer.state_dict(),
                     args=args
                 ),
-                    os.path.join(checkpoint, f"{model_type}.pt")
+                    os.path.join(checkpoint_dir, f"{model_type}.pt")
                 )
 
             end = time.time()
@@ -181,28 +176,27 @@ if __name__ == '__main__':
             json.dump(combined_results, f, indent=4)
 
         epochs = np.arange(1, max_epochs + 1)
-        (p1,) = plt.plot(epochs, combined_results['train/accuracy'], color='r')
-        (p2,) = plt.plot(epochs, combined_results['val/accuracy'], color='b')
+        plt.plot(epochs, combined_results['train/accuracy'], color='r')
         plt.xticks(np.arange(0, max_epochs + 1))
-        plt.title("Training and Validation Accuracy")
+        plt.title("Training Accuracy")
         plt.xlabel("epoch")
         plt.ylabel("accuracy")
 
-        plt.legend([p1, p2], ["train", "val"])
-        plt.savefig(os.path.join(RESULTS_PATH, 'train_val_accuracy.jpg'))
+        # plt.legend([p1, p2], ["train", "val"])
+        plt.savefig(os.path.join(RESULTS_PATH, 'train_accuracy.jpg'))
         plt.close()
 
         plt.clf()
 
-        (p1,) = plt.plot(epochs, combined_results['train/loss'], color='r')
-        (p2,) = plt.plot(epochs, combined_results['val/loss'], color='b')
+        plt.plot(epochs, combined_results['train/loss'], color='r')
+        # (p2,) = plt.plot(epochs, combined_results['val/loss'], color='b')
         plt.xticks(np.arange(0, max_epochs + 1))
-        plt.title("Training and Validation Loss")
+        plt.title("Training Loss")
         plt.xlabel("epoch")
         plt.ylabel("loss")
 
-        plt.legend([p1, p2], ["train", "val"])
-        plt.savefig(os.path.join(RESULTS_PATH, 'train_val_loss.jpg'))
+        # plt.legend([p1, p2], ["train", "val"])
+        plt.savefig(os.path.join(RESULTS_PATH, 'train_loss.jpg'))
         plt.close()
         plt.clf()
 
@@ -212,7 +206,7 @@ if __name__ == '__main__':
               f'\n\n==================================================\n\n')
         # load model from checkpoint if it is main model, or if we're using fine-tuned baseline
         if not args.baseline or args.from_checkpoint:
-            data = torch.load(os.path.join(checkpoint, f"{model_type}.pt"))
+            data = torch.load(os.path.join(checkpoint_dir, f"{model_type}.pt"))
             model.load_state_dict(data["model_state_dict"])
 
         RESULTS_PATH = f'test_results/{model_type}/{START_DATE}-{START_TIME}'

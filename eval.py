@@ -20,7 +20,7 @@ def evaluate_model(model, test_loader, device):
     score_lst = []
     pred_lst = []
     with torch.no_grad(), tqdm(total=len(test_loader)) as progress_bar:
-        for input_ids, masks, labels, stats, _ in test_loader:
+        for input_ids, masks, labels, stats in test_loader:
             label_lst.extend(labels)
             input_ids, masks, labels, stats = input_ids.to(device), masks.to(device), labels.to(device), stats.to(
                 device)  
