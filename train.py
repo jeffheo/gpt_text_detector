@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
-from torch.nn import BCEWithLogitsLoss
+import torch.nn.functional as F
+from torch.nn import CrossEntropyLoss
 import tqdm
 from typing import Optional, Tuple, Union
 from transformers.modeling_outputs import SequenceClassifierOutput
@@ -83,15 +84,23 @@ class RobertaWrapper(nn.Module):
         else:
             outputs = self.roberta_seq_classifier.roberta(input_ids, attention_mask, token_type_ids, position_ids,
                                                           head_mask,
-                                                          inputs_embeds, labels, output_attentions,
-                                                          output_hidden_states, return_dict)
-            output = outputs[0]
-            output += stat_embeds
-            logits = self.roberta_seq_classifier.classifier(output)
-            loss_fct = BCEWithLogitsLoss()
+                                                          inputs_embeds)
+            outputs = outputs[0]
+            print("Outputs dim:")
+            print(outputs.size())
+            print("Stat embeds dim:")
+            print(stat_embeds.size())
+            outputs += stat_embeds.unsqueeze(1)
+            logits = self.roberta_seq_classifier.classifier(outputs)
+            print("logits dimension")
+            print(logits.size())
+            loss_fct = CrossEntropyLoss()
+            print("labels dimension:")
+            print(labels.size())
             loss = loss_fct(logits, labels)
-            output = (logits,) + outputs[2:]
-            return ((loss,) + output) if loss is not None else output
+            return loss, logits
+            #output = (logits,) + outputs[2:]
+            #return ((loss,) + output) if loss is not None else output
 
 
 def accuracy_sum(logits: torch.Tensor, labels: torch.Tensor):
