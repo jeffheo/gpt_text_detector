@@ -64,17 +64,17 @@ class RobertaWrapper(nn.Module):
                                                           head_mask,
                                                           inputs_embeds)
             outputs = outputs[0]
-            print("Outputs dim:")
-            print(outputs.size())
-            print("Stat embeds dim:")
-            print(stat_embeds.size())
+#            print("Outputs dim:")
+#            print(outputs.size())
+#            print("Stat embeds dim:")
+#            print(stat_embeds.size())
             outputs += stat_embeds.unsqueeze(1)
             logits = self.roberta_seq_classifier.classifier(outputs)
-            print("logits dimension")
-            print(logits.size())
+#            print("logits dimension")
+#            print(logits.size())
             loss_fct = CrossEntropyLoss()
-            print("labels dimension:")
-            print(labels.size())
+#            print("labels dimension:")
+#            print(labels.size())
             loss = loss_fct(logits, labels)
             return loss, logits
             #output = (logits,) + outputs[2:]

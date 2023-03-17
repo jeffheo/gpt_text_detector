@@ -62,8 +62,10 @@ if __name__ == '__main__':
     name = f'roberta-{"large" if args.large else "base"}-openai-detector'
     args.tokenizer = transformers.RobertaTokenizer.from_pretrained(name)
     base = transformers.RobertaForSequenceClassification.from_pretrained(name)
-
+    
     unfreeze = args.unfreeze
+    
+    print(args.early_fusion)
 
     stat_size = None
     if not args.baseline:
