@@ -45,8 +45,8 @@ if __name__ == '__main__':
     parser.add_argument('--datatype', type=str, default='wiki_intro')
 
     # model hyper-parameters
+    # NOTE: late fusion by default!
     parser.add_argument('--early-fusion', action="store_true")
-    # TODO: late-fusion
     parser.add_argument('--unfreeze', action="store_true", help="unfreeze base RobertaForSequenceClassifier")
     parser.add_argument('--use-all-stats', action="store_true")
 
@@ -64,8 +64,6 @@ if __name__ == '__main__':
     base = transformers.RobertaForSequenceClassification.from_pretrained(name)
     
     unfreeze = args.unfreeze
-    
-    print(args.early_fusion)
 
     stat_size = None
     if not args.baseline:
@@ -184,20 +182,17 @@ if __name__ == '__main__':
         plt.xlabel("epoch")
         plt.ylabel("accuracy")
 
-        # plt.legend([p1, p2], ["train", "val"])
         plt.savefig(os.path.join(RESULTS_PATH, 'train_accuracy.jpg'))
         plt.close()
 
         plt.clf()
 
         plt.plot(epochs, combined_results['train/loss'], color='r')
-        # (p2,) = plt.plot(epochs, combined_results['val/loss'], color='b')
         plt.xticks(np.arange(0, max_epochs + 1))
         plt.title("Training Loss")
         plt.xlabel("epoch")
         plt.ylabel("loss")
 
-        # plt.legend([p1, p2], ["train", "val"])
         plt.savefig(os.path.join(RESULTS_PATH, 'train_loss.jpg'))
         plt.close()
         plt.clf()

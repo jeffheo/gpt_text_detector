@@ -21,21 +21,21 @@ def get_frequency_count(text: str):
 class StatFeatureExtractor:
     def __init__(self, args: Dict[str, bool]):
         self.features = [globals()[k] for k in args if k in globals() and args[k]]
-        # TODO: How to get stat_vec_size based on what stat features we're using?
         self.stat_vec_size = 2085
 
     def encode(self, text) -> List[int]:
         vec = []
         count = get_frequency_count(text)
         for phi in self.features:
+            # all features should return lists because we're concatenating
             vec += phi(text, count)
         assert len(vec) == self.stat_vec_size
         return vec
 
 
 def zipf(_, word_frequency: Counter) -> List[float]:
-    """Calculate distribution and information loss relative to Zipf Distribution
-    :return: float
+    """
+    Calculate distribution and information loss relative to Zipf Distribution
     """
     frequencies = []
     for _, count in word_frequency.most_common():
@@ -47,12 +47,12 @@ def zipf(_, word_frequency: Counter) -> List[float]:
 
 
 def clumpiness(_, word_frequency: Counter) -> List[float]:
-    """We compute the clumpiness of text using Gini coefficient.
+    """
+    We compute the clumpiness of text using Gini coefficient.
     The hypothesis is that human-written text is more likely to be clumpy,
-    while machine-generated text is smoother (uniform). This is essentially burstiness.
+    while machine-generated text is smoother (uniform).
     Inspiration: http://proceedings.mlr.press/v10/sanasam10a/sanasam10a.pdf
     Code: https://stackoverflow.com/a/61154922
-    :return:
     """
     x = np.array(list(word_frequency.values()))
     diffsum = 0
@@ -62,17 +62,20 @@ def clumpiness(_, word_frequency: Counter) -> List[float]:
 
 
 def burstiness(_, word_frequency: Counter) -> List[float]:
-    """Calculate Index of Dispersion, which measures the dispersion of the probability index."""
+    """
+    Calculate Index of Dispersion, which measures the dispersion of the probability index.
+    """
     counts = np.array(list(word_frequency.values()))
     var = np.sum((counts - np.mean(counts)) ** 2) / counts.size
     return [var / np.mean(counts)]
 
 
 def punctuation(text: str, _) -> List[float]:
-    """Compute Punctuation Features, Darmon et al. (https://arxiv.org/pdf/1901.00519.pdf)
-    TODO: impl. f4, f5, f6,,,but that seems to be a bit unwieldy? Might put too much emphasis on punct. distribution.
-    :param text: String corpus
-    :return: ndarray of punctuation features [f1,...,f6]
+    """
+    Compute Punctuation Features, Darmon et al. (https://arxiv.org/pdf/1901.00519.pdf)
+    We implement only the f1, f2, f3 features mentioned in the above paper,
+    so as to not place undue emphasis on punctuation distribution.
+    This returns a (very) sparse vector.
     """
     text = text.strip(' ')
     i2p = list(string.punctuation)
@@ -96,10 +99,16 @@ def punctuation(text: str, _) -> List[float]:
 
 
 def kurt(_, word_frequency: Counter) -> List[float]:
+    """
+    Compute the Kurtosis of the frequency distribution.
+    """
     return [kurtosis(np.array(list(word_frequency.values())))]
 
 
 def stopword_ratio(_, word_frequency: Counter) -> List[float]:
+    """
+    Compute the ratio of stop words in the text.
+    """
     stopwords = {'a', 'an', 'the', 'and', 'it', 'for', 'or', 'but', 'in', 'my', 'your', 'our', 'their'}
     ttl = 0
     stop = 0

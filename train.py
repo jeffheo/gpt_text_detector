@@ -59,31 +59,21 @@ class RobertaWrapper(nn.Module):
             return self.roberta_seq_classifier(input_ids, attention_mask, token_type_ids, position_ids, head_mask,
                                                inputs_embeds, labels, output_attentions, output_hidden_states,
                                                return_dict)
-        else:
+        else:  # late fusion
             outputs = self.roberta_seq_classifier.roberta(input_ids, attention_mask, token_type_ids, position_ids,
                                                           head_mask,
                                                           inputs_embeds)
             outputs = outputs[0]
-#            print("Outputs dim:")
-#            print(outputs.size())
-#            print("Stat embeds dim:")
-#            print(stat_embeds.size())
             outputs += stat_embeds.unsqueeze(1)
             logits = self.roberta_seq_classifier.classifier(outputs)
-#            print("logits dimension")
-#            print(logits.size())
+
             loss_fct = CrossEntropyLoss()
-#            print("labels dimension:")
-#            print(labels.size())
             loss = loss_fct(logits, labels)
             return loss, logits
-            #output = (logits,) + outputs[2:]
-            #return ((loss,) + output) if loss is not None else output
 
 
 def accuracy_sum(logits: torch.Tensor, labels: torch.Tensor):
     if list(logits.shape) == list(labels.shape) + [2]:
-        # 2-d outputs
         classification = (logits[..., 0] < logits[..., 1]).long().flatten()
     else:
         classification = (logits > 0).long().flatten()
@@ -92,6 +82,12 @@ def accuracy_sum(logits: torch.Tensor, labels: torch.Tensor):
 
 
 def train(model: nn.Module, optimizer, loader, device, desc='Training'):
+    """
+    Train model.
+    In the original RoBERTa sequence classifier, the input tokens were fed into the model,
+    and the embedding logic was handled implicitly. However, for our purposes,
+    we need to explicitly embed the input sequence first such that we can add our statistical embeddings to it.
+    """
     model.train()
 
     train_accuracy = 0
@@ -106,6 +102,9 @@ def train(model: nn.Module, optimizer, loader, device, desc='Training'):
             input_embeds = model.word_embeddings(input_ids)
             stat_embeds = None
 
+            # add statistical embeddings.
+            # need to broadcast because stat embeds are calculated per sequence, not per token.
+            # ideally, this doesn't matter because we're encoding global context.
             if not model.is_baseline:
                 stat_embeds = model.stat_embeddings(stats)
                 if model.is_early_fusion:
@@ -138,7 +137,6 @@ def validate(model: nn.Module, loader, device, votes=1, desc='Validating'):
     validation_epoch_size = 0
     validation_loss = 0
 
-    # TODO: I have no idea what this is doing...
     records = [record for v in range(votes) for record in tqdm.tqdm(loader, desc=f'Preloading data ... {v}')]
     records = [[records[v * len(loader) + i] for v in range(votes)] for i in range(len(loader))]
 
@@ -163,7 +161,6 @@ def validate(model: nn.Module, loader, device, votes=1, desc='Validating'):
                 losses.append(loss)
                 logit_votes.append(logits)
 
-            # TODO: Again, no idea what this is doing...
             loss = torch.stack(losses).mean(dim=0)
             logits = torch.stack(logit_votes).mean(dim=0)
 

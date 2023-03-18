@@ -7,14 +7,17 @@ from transformers import PreTrainedTokenizer
 from datasets import load_dataset
 import torch.distributed as dist
 
+
 def process_string(s):
     s = s.strip()
     return s.replace('\r', ' ').replace('\n', ' ')
+
 
 def process(datapoint):
     datapoint['wiki_intro'] = process_string(datapoint['wiki_intro'])
     datapoint['generated_intro'] = process_string(datapoint['generated_intro'])
     return datapoint
+
 
 def process_pubmed(datapoint):
     datapoint['long_answer'] = process_string(datapoint['long_answer'])
@@ -23,9 +26,10 @@ def process_pubmed(datapoint):
 
 class EncodedDataset(Dataset):
     """
-    EncodedDataset from https://github.com/openai/gpt-2-output-dataset/blob/2c102400c7e4e698acd3f0e51d3b6cf1c637c0fe/detector/dataset.py
+    EncodedDataset used in OpenAI RoBERTa detector.
+    We add the statistical feature extractor logic here so that data is processed as it is being loaded.
+    https://github.com/openai/gpt-2-output-dataset/blob/2c102400c7e4e698acd3f0e51d3b6cf1c637c0fe/detector/dataset.py
     """
-
     def __init__(self, real_texts: List[str], fake_texts: List[str], tokenizer: PreTrainedTokenizer,
                  stat_extractor=None, max_sequence_length: int = None, min_sequence_length: int = None,
                  epoch_size: int = None, token_dropout: float = None, seed: int = None, **kwargs):
@@ -57,6 +61,8 @@ class EncodedDataset(Dataset):
 
         # This will throw truncation warning, but truncation is explicitly handled below, so should be fine i think...?
         tokens = self.tokenizer.encode(text)
+
+        # Encode statistical feature vector
         stat_vec = torch.zeros(1)
         if self.stat_extractor:
             stat_vec = self.stat_extractor.encode(text)
@@ -96,7 +102,7 @@ def load_datasets(tokenizer, batch_size, max_sequence_length, random_sequence_le
                   stat_extractor=None, epoch_size=None, token_dropout=None, seed=None,
                   num_workers=4, **kwargs) -> \
         Tuple[DataLoader, DataLoader, DataLoader]:
-
+    """Load wiki_intro dataset or pubmed dataset, depending on flag. Create DataLoader for train, val, and test."""
     corpus = globals()[f'load_{datatype}']()
 
     Sampler = DistributedSampler if dist.is_available() and dist.is_initialized() and dist.get_world_size() > 1 else RandomSampler
@@ -137,6 +143,7 @@ class Corpus:
 
 
 def load_wiki_intro():
+    """load gpt-wiki-intro dataset and pre-process."""
     dataset = load_dataset("aadityaubhat/GPT-wiki-intro")
     dataset['train'] = dataset['train'].map(process)
 
@@ -154,16 +161,13 @@ def load_wiki_intro():
 
 
 def load_pubmed_qa():
-    """load pubmed qa dataset for testing purposes"""
+    """load pubmed qa dataset for testing purposes and pre-process.
+    We add dummy corpus for the train-set, but it shouldn't be used."""
     fake = load_dataset("pubmed_qa", "pqa_artificial")
     real = load_dataset("pubmed_qa", "pqa_unlabeled")
-    print(f'Fake Dataset Length: {len(fake["train"])}')
-    print(f'Real Dataset Length: {len(real["train"])}')
+
     # truncate fake to length of real
     fake = fake['train'].train_test_split(test_size=1 - (len(real['train']) / len(fake['train'])))
-
-    print(f'Fake Dataset Length: {len(fake["train"])}')
-    print(f'Real Dataset Length: {len(real["train"])}')
 
     fake['train'] = fake['train'].map(process_pubmed)
     real['train'] = real['train'].map(process_pubmed)

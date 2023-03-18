@@ -1,5 +1,5 @@
 # gpt_text_detector
-Combining statistical and neural methods to improve machine text detection
+Combining statistical and neural methods to improve machine text detection. 
 
 ## Installation
 ### With Conda
@@ -8,48 +8,48 @@ $ conda env create --file=env.yml
 $ conda activate cs224n_project
 ```
 
-## Running
-tbd
-### Test Baseline
+### With Pip
 ```shell
-python run.py --test --baseline
+$ pip install -r requirements.txt
 ```
-### Train Baseline
-Before we proceed, first check if things work by doing by running
-```shell
-python run.py --train --baseline --epoch-size=5
-```
-Check to see if 
-1. `logs` directory is generated with `tfevents` files and `best-model.pt`
-2. Then try
-    ```shell
-   tensorboard --logdir=logdir
-    ```
-   This should ideally give you summary of train results. If not, skip it and move on. Clear the log files.
+## Experiments 
+We recommend that you run the experiments in the following steps. All training results should be stored in `train_results/` and all test results should be stored in `test_results/`. The model checkpoints are saved in `mdl/`. The experiments default to the `gpt-wiki-intro` dataset. To use PubMedQA dataset, specify the following flag: `--datatype=pubmed_qa`.  
+### Baseline Experiments
+**1. Test Pre-trained Baseline**
 
-If all works fine, then run
+This tests the "as-is" OpenAI RoBERTa detector (trained on GPT-2 data) on the given text.
 ```shell
-python run.py --train --baseline
+$ python run.py --test --baseline
 ```
-Then run ```tensorboad --logdir=logdir``` and save plots from UI. After that, you should remove the generated logfiles so that we can train the main model. Ideally, they should go in different directories, but I'm too lazy to code that up atm. 
-### Test Trained Baseline
-```shell
-python run.py --test --baseline --from-checkpoint
-```
-This should output plots in the `results/` directory. Sanity check the plots. 
-### Train Main Model
-Likewise, check to see if everything works without fail
-```shell
-python run.py --train --epoch-size=5 --early-fusion --use-all-stats
-```
-Check the same things as above. If all works fine, then run
-```shell
-python run.py --train --early-fusion --use-all-stats
-```
-Then run ```tensorboad --logdir=logdir``` and save plots from UI. 
+This runs a default test on the `gpt-wiki-intro` data set. 
 
-### Test Main Model
+**2. Finetune Baseline**
+
+This finetunes the above baseline model on GPT-3 data. 
 ```shell
-python run.py --test --early-fusion --use-all-stats
+$ python run.py --train --baseline
 ```
-Check plots in `results/` directory and sanity check plots.
+This should save the model under `mdl/`. 
+
+**3. Test Finetuned Baseline**
+
+This tests the above finetuned baseline. NOTE: the model must be saved in the `mdl/` directory.
+```shell
+$ python run.py --test --baseline --from-checkpoint
+```
+### Main Model Experiments
+**1. Train Main Model**
+
+This tests the early fusion version of our main model. Note that you can turn on or off specific statistical features using flags, or use all as below. If `early_fusion` flag is not specified, model defaults to late fusion.
+```shell
+$ python run.py --train --early-fusion --use-all-stats
+```
+
+This should save the model under `mdl/`. 
+
+**2. Test Main Model (Late Fusion)**
+
+Test the model from above.
+```shell
+$ python run.py --test --early-fusion --use-all-stats
+```
