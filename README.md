@@ -1,9 +1,13 @@
 # gpt_text_detector
 <<<<<<< HEAD
+<<<<<<< HEAD
 123
 =======
 12345
 >>>>>>> fb0d706 (change readme)
+=======
+1234567
+>>>>>>> c6ab1cb (further modify readme)
 Combining statistical and neural methods to improve machine text detection. 
 
 ## Installation
