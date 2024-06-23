@@ -1,6 +1,6 @@
 # gpt_text_detector
-123 Combining statistical and neural methods to improve machine text detection. 
-adsfadfadsaf
+Combining statistical and neural methods to improve machine text detection. 
+
 ## Installation
 ### With Conda
 ```shell
